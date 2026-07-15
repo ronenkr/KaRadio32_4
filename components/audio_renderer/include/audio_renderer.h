@@ -51,6 +51,7 @@ void renderer_init(renderer_config_t *config);
 void renderer_start();
 void renderer_stop();
 void renderer_destroy();
+void renderer_play_startup_tone();
 
 void renderer_zero_dma_buffer();
 renderer_config_t *renderer_get();

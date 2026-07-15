@@ -24,6 +24,8 @@
 /* The legacy WROOM32 crypto port is specific to the original ESP32. */
 #if CONFIG_IDF_TARGET_ESP32S3
     #define NO_ESP32WROOM32_CRYPT
+    /* Keep certificate parsing within the 3.7 KB client task stack. */
+    #define WOLFSSL_SMALL_STACK
 #endif
 
 #define BENCH_EMBEDDED

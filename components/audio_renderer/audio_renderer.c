@@ -28,8 +28,16 @@
 
 #define TAG "Renderer"
 
+#define STARTUP_TONE_SAMPLE_RATE_HZ 44100U
+#define STARTUP_TONE_FREQUENCY_HZ 1000U
+#define STARTUP_TONE_DURATION_MS 500U
+#define STARTUP_TONE_BUFFER_FRAMES 441U
+#define STARTUP_TONE_REPEAT_COUNT 50U
+#define STARTUP_TONE_AMPLITUDE 8192
+
 static renderer_config_t *renderer_instance = NULL;
 static component_status_t renderer_status = UNINITIALIZED;
+static int16_t startup_tone[STARTUP_TONE_BUFFER_FRAMES * 2];
 //static QueueHandle_t i2s_event_queue;
 
 static const uint32_t VUCP_PREAMBLE_B = 0xCCE80000; // 11001100 11101000
@@ -498,6 +506,74 @@ void renderer_destroy()
 {
     renderer_status = UNINITIALIZED;
 //    i2s_driver_uninstall(renderer_instance->i2s_num);
+}
+
+/*
+ * Play an exact 1 kHz, 500 ms stereo tone. The 441-frame buffer contains
+ * ten complete cycles at 44.1 kHz, so repeating it 50 times is continuous.
+ * This is used only before the player tasks are created and releases I2S0
+ * afterward; the decoder owns and initializes that driver during playback.
+ */
+void renderer_play_startup_tone()
+{
+	if (!option_get_startup_beep() || get_audio_output_mode() != I2S)
+	{
+		return;
+	}
+
+	gpio_num_t lrck;
+	gpio_num_t bclk;
+	gpio_num_t i2sdata;
+	gpio_get_i2s(&lrck, &bclk, &i2sdata);
+	if (lrck == GPIO_NONE || bclk == GPIO_NONE || i2sdata == GPIO_NONE)
+	{
+		ESP_LOGW(TAG, "Startup tone skipped: I2S pins are not configured");
+		return;
+	}
+
+	if (!init_i2s())
+	{
+		ESP_LOGE(TAG, "Startup tone skipped: I2S initialization failed");
+		return;
+	}
+
+	const float phase_step = 6.28318530717958647692f *
+			(float)STARTUP_TONE_FREQUENCY_HZ / (float)STARTUP_TONE_SAMPLE_RATE_HZ;
+	for (uint32_t frame = 0; frame < STARTUP_TONE_BUFFER_FRAMES; ++frame)
+	{
+		int16_t sample = (int16_t)(sinf(phase_step * (float)frame) * STARTUP_TONE_AMPLITUDE);
+		startup_tone[frame * 2] = sample;
+		startup_tone[frame * 2 + 1] = sample;
+	}
+
+	ESP_LOGI(TAG, "Playing %u Hz startup tone for %u ms",
+			STARTUP_TONE_FREQUENCY_HZ, STARTUP_TONE_DURATION_MS);
+	bool write_ok = true;
+	for (uint32_t repeat = 0; repeat < STARTUP_TONE_REPEAT_COUNT && write_ok; ++repeat)
+	{
+		const uint8_t *buffer = (const uint8_t *)startup_tone;
+		size_t bytes_left = sizeof(startup_tone);
+		while (bytes_left > 0)
+		{
+			size_t bytes_written = 0;
+			esp_err_t err = i2s_write(renderer_instance->i2s_num, buffer, bytes_left,
+					&bytes_written, pdMS_TO_TICKS(100));
+			if (err != ESP_OK || bytes_written == 0)
+			{
+				ESP_LOGE(TAG, "Startup tone I2S write failed: %s", esp_err_to_name(err));
+				write_ok = false;
+				break;
+			}
+			buffer += bytes_written;
+			bytes_left -= bytes_written;
+		}
+	}
+
+	/* Wait for the final DMA buffers before silencing and freeing I2S0. */
+	vTaskDelay(pdMS_TO_TICKS(100));
+	i2s_stop(renderer_instance->i2s_num);
+	i2s_zero_dma_buffer(renderer_instance->i2s_num);
+	i2s_driver_uninstall(renderer_instance->i2s_num);
 }
 
 

@@ -17,7 +17,6 @@
 #include "wolfssl/wolfcrypt/settings.h"
 #include "user_settings.h"
 #include "wolfssl/ssl.h"
-#include "wolfssl/certs_test.h"
 
 
 #include "vs1053.h"
@@ -1405,7 +1404,6 @@ void clientTask(void *pvParams) {
 	uint8_t cnterror;
 	char userAgent[40];
 	struct sockaddr_in dest;
-	int ret;
 
 	vTaskDelay(200);
 	spiRamFifoInit();	
@@ -1423,12 +1421,11 @@ void clientTask(void *pvParams) {
 		ESP_LOGE(TAG,"Failed to create WOLFSSL_CTX");
 	}
     wolfSSL_SetLoggingCb(wolfSSL_log_function);	
-	/* Load client certificates into WOLFSSL_CTX */
-	if ((ret = wolfSSL_CTX_load_verify_buffer(wctx, client_cert_der_1024,
-		sizeof_client_cert_der_1024, WOLFSSL_FILETYPE_ASN1)) != SSL_SUCCESS) {
-		ESP_LOGE(TAG,"Failed to load %d, please check the file.",ret);
-	}
-	/* not peer check */
+	/*
+	 * The bundled wolfSSL test certificate is not a trust anchor for radio
+	 * streams and verification is intentionally disabled below.  Parsing it
+	 * with the legacy wolfSSL 4.6.0 port corrupts the heap on ESP-IDF 5.
+	 */
 	wolfSSL_CTX_set_verify(wctx, WOLFSSL_VERIFY_NONE, 0);
 //----------------------------------------------------------------------
 					

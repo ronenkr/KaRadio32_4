@@ -127,7 +127,7 @@ esptool.py --chip esp32s3 --port PORT write_flash 0xc22000 \
 
 The display uses PWR/BL/RST/CS/DC/WR/RD GPIOs 15/38/5/6/7/8/9, plus data GPIOs 39/40/41/42/45/46/47/48. `O_LCD_ROTA=0` is the normal landscape direction; set it to `1` for the opposite direction. The two onboard buttons are active-low: GPIO0 is Button A and GPIO14 is Button B. GPIO0 is also the BOOT strap, so do not hold it while resetting or powering on.
 
-The board has no audio output and ESP32-S3 has no built-in DAC. This profile leaves I2S pins disabled; configure an external I2S DAC on unused GPIOs before selecting audio output.
+The board has no audio output and ESP32-S3 has no built-in DAC. This profile enables a PCM5102A-compatible three-wire I2S DAC: connect `BCK` to GPIO21, `DIN` to GPIO17, and `LCK`/`LRCK` to GPIO18. Leave the DAC's `SCL`/`SCK` (MCLK) pin unconnected. `O_AUDIO=0` selects the normal I2S output. `O_STARTUP_BEEP=1` plays a 1 kHz tone for 0.5 seconds on boot to test the DAC path. GPIO17 and GPIO18 share the board's Qwiic I2C connector, so do not use that connector while this audio layout is active.
 
 ## GPIO Definition 
 The default configuration is given below. It includes an encoder, an IR remote and a LCD or OLED.  

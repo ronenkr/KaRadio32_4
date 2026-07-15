@@ -183,6 +183,21 @@ bool option_get_esplay()
 	return ret;
 }
 
+bool option_get_startup_beep()
+{
+	uint8_t enabled = 0;
+	nvs_handle hardware_handle;
+
+	if (open_partition(hardware, option_space, NVS_READONLY, &hardware_handle) != ESP_OK)
+	{
+		return false;
+	}
+
+	(void)nvs_get_u8(hardware_handle, "O_STARTUP_BEEP", &enabled);
+	close_partition(hardware_handle, hardware);
+	return enabled != 0;
+}
+
 
 void option_get_lcd_info(uint8_t *enca,uint8_t* rt)
 {

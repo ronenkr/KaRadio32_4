@@ -320,7 +320,6 @@ void startSleep(uint32_t delay){
 	if (delay == 0) return;
 	ESP_ERROR_CHECK(gptimer_set_raw_count(sleeptimer,delay*600000));
 	ESP_ERROR_CHECK(gptimer_set_alarm_action(sleeptimer, &alarm_config));
-	ESP_ERROR_CHECK(gptimer_register_event_callbacks(sleeptimer, &cbss, event_queue));
 	ESP_ERROR_CHECK(gptimer_start(sleeptimer));
 	tsocket("lsleep",delay);
 }
@@ -339,7 +338,6 @@ void startWake(uint32_t delay){
 	if (delay == 0) return;
 	ESP_ERROR_CHECK(gptimer_set_raw_count(waketimer,delay*600000ll));
 	ESP_ERROR_CHECK(gptimer_set_alarm_action(waketimer, &alarm_config));
-	ESP_ERROR_CHECK(gptimer_register_event_callbacks(waketimer, &cbsw, event_queue));
 	ESP_ERROR_CHECK(gptimer_start(waketimer));
 	tsocket("lwake",delay);
 }
@@ -404,15 +402,21 @@ gptimer_alarm_config_t  alarm_config = {
 	//////////////////////
 	ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &mstimer));
 	ESP_ERROR_CHECK(gptimer_set_alarm_action(mstimer, &alarm_config));
+	ESP_ERROR_CHECK(gptimer_set_raw_count(mstimer, alarm_config.reload_count));
 	gptimer_event_callbacks_t cbs = {
 		.on_alarm = msCallback, // register user callback
 	};
 	ESP_ERROR_CHECK(gptimer_register_event_callbacks(mstimer, &cbs, event_queue));
+	ESP_ERROR_CHECK(gptimer_enable(mstimer));
 	ESP_ERROR_CHECK(gptimer_start(mstimer));	
-	
 
-	ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &sleeptimer));	
-	ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &waketimer));	
+
+	ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &sleeptimer));
+	ESP_ERROR_CHECK(gptimer_register_event_callbacks(sleeptimer, &cbss, event_queue));
+	ESP_ERROR_CHECK(gptimer_enable(sleeptimer));
+	ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &waketimer));
+	ESP_ERROR_CHECK(gptimer_register_event_callbacks(waketimer, &cbsw, event_queue));
+	ESP_ERROR_CHECK(gptimer_enable(waketimer));
 	
 #else	
 	timer_config_t config;
@@ -1193,6 +1197,8 @@ void app_main()
 	//I2S, I2S_MERUS, DAC_BUILT_IN, PDM, VS1053
 	audio_output_mode = g_device->audio_output_mode;
 	ESP_LOGI(TAG, "audio_output_mode %d\nOne of I2S=0, I2S_MERUS, DAC_BUILT_IN, PDM, VS1053, SPDIF",audio_output_mode);
+	renderer_init(create_renderer_config());
+	renderer_play_startup_tone();
 
 	//uart speed
 	uspeed = g_device->uartspeed;	
@@ -1284,7 +1290,6 @@ void app_main()
     player_config->media_stream = kcalloc(1, sizeof(media_stream_t));
 
 	audio_player_init(player_config);	  
-	renderer_init(create_renderer_config());
 	
 	// LCD Display infos
     lcd_welcome(localIp,"STARTED");

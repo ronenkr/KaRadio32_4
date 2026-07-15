@@ -2,7 +2,7 @@ key,type,encoding,value
 
 label_space,namespace,,
 L_LABEL,data,string,ttgo_tdisplay_s3.csv
-L_COMMENT,data,string,Standard LilyGO TTGO T-Display S3 with I80 ST7789 display.
+L_COMMENT,data,string,Standard LilyGO TTGO T-Display S3 with I80 ST7789 display and PCM5102A I2S audio.
 
 gpio_space,namespace,,
 K_SPI,data,u8,2
@@ -43,9 +43,9 @@ P_LCD_D5,data,u8,46
 P_LCD_D6,data,u8,47
 P_LCD_D7,data,u8,48
 P_IR_SIGNAL,data,u8,255
-P_I2S_LRCK,data,u8,255
-P_I2S_BCLK,data,u8,255
-P_I2S_DATA,data,u8,255
+P_I2S_LRCK,data,u8,18
+P_I2S_BCLK,data,u8,21
+P_I2S_DATA,data,u8,17
 P_TOUCH_CS,data,u8,255
 P_JOY_0,data,u8,255
 P_JOY_1,data,u8,255
@@ -66,6 +66,7 @@ O_DDMM_FLAG,data,u8,0
 O_BTN0,data,u8,0
 O_BTN1,data,u8,0
 O_AUDIO,data,u8,0
+O_STARTUP_BEEP,data,u8,1
 O_ESPLAY,data,u8,0
 
 custom_ir_space,namespace,,
