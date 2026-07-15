@@ -20,6 +20,7 @@
 // min 128x64
 #define LCD_COLOR		128	//0x80
 #define LCD_SPI			64 //0x40
+#define LCD_I80			32 //0x20
 #define LCD_I2C			0
 #define LCD_NONE		255
 
@@ -64,6 +65,9 @@
 #define LCD_SPI_ST7735W			202 // 128x160 shifted 2+1
 #define LCD_SPI_ST7789S			203 // 240x240
 #define LCD_SPI_ST7789T			204 // 135x240
+
+// Native parallel display
+#define LCD_I80_ST7789_TDISPLAY_S3 (LCD_COLOR | LCD_I80) // 170x320, 8-bit I80
 
 typedef struct
 {

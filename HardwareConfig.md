@@ -5,7 +5,7 @@ This allows you to take advantage of the standard software even if your port con
 The configuration must be specified in a csv file.  
 A template is given by the pattern.csv file
 The default configuration of the current software is in the standard_adb.csv file.  
-A csv file is interpreted by an utility to generate a bin file that must be flashed at address 0x3e2000 only one time per ESP32 when using the ESP-IDF 5.4 default partition table.
+A csv file is interpreted by a utility to generate a bin file. Flash it once at the offset of the `hardware` partition. This is `0x3e2000` only for the ESP-IDF 5.4 default 4 MB partition table.
 
 ---------------
 1/ Prerequisite
@@ -33,7 +33,7 @@ device1,66,0,0x3e1000,4K,
 hardware,data,nvs,0x3e2000,12K,
 ```
 
-The generated hardware configuration binary must be flashed at `0x3e2000`.
+The generated hardware configuration binary must be flashed at `0x3e2000`. The dedicated 16 MB T-Display S3 table instead places `hardware` at `0xc22000`; do not flash that board's configuration at the default offset.
 
 Rename the pattern.csv file with the name of your c
 ard, for example lolin32.csv  
@@ -101,6 +101,12 @@ P_I2C_RST		RST if any
 P_LCD_CS		CS  
 P_LCD_A0		A0 or D/C or DC  
 P_LCD_RST		RST or RES  
+- **LCD on Intel 8080 (I80) parallel bus:**
+P_LCD_PWR		Display power enable
+P_LCD_WR		Write strobe
+P_LCD_RD		Read strobe (held high for write-only panels)
+P_LCD_D0…P_LCD_D7	Eight-bit display data bus
+  `P_LCD_CS`, `P_LCD_A0` (D/C), and `P_LCD_RST` are shared with the SPI LCD fields above.
 - **Infrared remote:**  
 P_IR_SIGNAL		ir Y Signal  
 - **I2S bus:**  
@@ -124,7 +130,7 @@ P_LEVEL_SLEEP	logical level to be set on P_SLEEP GPIO to enter deep_sleep mode.
 
 ## OPTIONS
 - **LCD CONTROL**  
-O_LCD_TYPE		Type of lcd (see [addon.h](https://github.com/karawin/Ka-Radio32/blob/master/main/include/addon.h) file).  
+O_LCD_TYPE		Type of lcd (see [addon.h](https://github.com/karawin/Ka-Radio32/blob/master/main/include/addon.h) file). `160` is the I80 ST7789 T-Display S3 type.
 O_LCD_ROTA		Control the rotation of the LCD, 0 no rotation, 1: rotation.  
 O_LCD_OUT 		The tempo to light off the screen in seconds. 0 if no tempo. 
 O_LCD_STOP		The tempo to light off the screen on stop mode. 0 if no tempo  
@@ -134,17 +140,17 @@ O_DDMM_FLAG		The format of the date to display 0:MMDD, 1:DDMM.
 O_BTN0			The active level of buttons: 0=LOW, 1:HIGH  ( 0=Default)  
 O_BTN1			The active level of buttons: 0=LOW, 1:HIGH  ( 0=Default)  
 - **Audio output**  
-O_AUDIO The initial Audio mode: 0=I2S (Default), 1=MERUS, 2=DAC, 3=PDM, 4=VS1053		
+O_AUDIO The initial Audio mode: 0=I2S (Default), 1=MERUS, 2=DAC, 3=PDM, 4=VS1053. Built-in DAC mode is available only on original ESP32 targets; ESP32-S3 requires external I2S output.
 
 -------------------
 ## Special cases:
 -------------------
 ### GPIO
 
-- GPIOs 34 to 39 are input only pins.  
+- On original ESP32, GPIOs 34 to 39 are input only pins.
 These pins don’t have internal pull-ups or pull-down resistors.  
 They can’t be used as outputs, so use these pins only as inputs or ADC usage.  
-- Digital to Analog Converter (DAC)  
+- Digital to Analog Converter (DAC, original ESP32 only)
 There are 2 x 8 bits DAC channels on the ESP32 to convert digital signals into analog voltage signal outputs.  
 These are the DAC channels:  
 -    DAC1 (GPIO25)  
@@ -328,12 +334,12 @@ Build the bin file
 
 3. Return to the msys32 window and navigate to the Ka-Radio32-master/boards folder
 
-4. Start the command : ./nvs_partition_generator.sh yourname[.csv] to generate build/yourname.bin
+4. Start the command : `bash ./nvs_partition_generator.sh yourname[.csv]` to generate build/yourname.bin
 
 Result :   
 MINGW32 ~/esp/Ka-Radio32-master/boards  
-$ ./nvs_partition_generator.sh modified_adb  
-python ./nvs_partition_gen.py modified_adb.csv build/modified_adb.bin 0x2000  
+$ bash ./nvs_partition_generator.sh modified_adb.csv
+Created NVS binary: ===> build/modified_adb.bin
 done  
 
 
@@ -344,7 +350,16 @@ With ESP DOWNLOAD TOOL
 ![Screenshoot of download tool](https://raw.githubusercontent.com/karawin/Ka-Radio32/master/images/downloadtool32.jpg)
 
 
-or esptool.py command at address 0x3e2000
+or an `esptool.py` command at address `0x3e2000` for the default table.
+
+For the standard LilyGO TTGO T-Display S3, first build and flash the ESP32-S3 firmware with its custom partition table. Then run this from `boards` and flash the generated binary at `0xc22000`:
+
+```bash
+NVS_FLASH_OFFSET=0xc22000 ESPTOOL_CHIP=esp32s3 \
+  bash ./nvs_partition_generator.sh ttgo_tdisplay_s3.csv
+esptool.py --chip esp32s3 --port PORT write_flash 0xc22000 \
+  build/ttgo_tdisplay_s3.bin
+```
 
 It seems that there is a problem with this ESP DOWNLOAD TOOL for flashing the bin alone.  
 In case of problem, flash it with another bin (bootloader.bin or KaRadio32.bin) 

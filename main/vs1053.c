@@ -68,8 +68,11 @@ void VS1053_spi_init(){
 	if(!vsSPI) vsSPI=xSemaphoreCreateMutex();
 	if(!hsSPI) hsSPI=xSemaphoreCreateMutex();;
 	
-	gpio_get_spi_bus(&spi_no,&miso,&mosi,&sclk);	
-	if(spi_no > 2) return; //Only VSPI and HSPI are valid spi modules. 	
+	gpio_get_spi_bus(&spi_no,&miso,&mosi,&sclk);
+	if(spi_no > 2 || mosi == GPIO_NONE || sclk == GPIO_NONE) {
+		ESP_LOGI(TAG,"SPI bus disabled");
+		return;
+	}
 
 	spi_bus_config_t buscfg={
         .miso_io_num=(miso!=GPIO_NONE)?miso:-1,
@@ -697,4 +700,3 @@ void vsTask(void *pvParams) {
 	vTaskDelete(NULL);
 	
 }
-

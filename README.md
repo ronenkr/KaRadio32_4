@@ -101,6 +101,34 @@ idf.py -p PORT flash
 No local ESP-IDF patch is required for DAC output with v5.4.2.
 
 The larger OTA image relocates the `hardware` NVS partition. Existing devices must be flashed over serial with the new partition table, then have their hardware configuration regenerated and flashed with the updated `boards` tooling before using OTA again.
+
+### LilyGO TTGO T-Display S3
+
+[`boards/ttgo_tdisplay_s3.csv`](boards/ttgo_tdisplay_s3.csv) targets the standard 1.9-inch T-Display S3: ESP32-S3, 16 MB flash, 8 MB OPI PSRAM, and a native 170×320 ST7789 I80 panel. KaRadio presents it as a 320×170 landscape display. It is not compatible with the original ESP32 T-Display, T-Display S3 AMOLED, or Pro variants.
+
+Build in a separate directory so the ESP32-S3 settings cannot reuse an ESP32 build. `sdkconfig.defaults.esp32s3` is loaded automatically and selects the 16 MB partition table.
+
+```bash
+source /home/user/esp/v5.4.2/esp-idf/export.sh
+IDF_TARGET=esp32s3 idf.py -B build-ttgo-t-display-s3 \
+  -DSDKCONFIG=build-ttgo-t-display-s3/sdkconfig build
+IDF_TARGET=esp32s3 idf.py -B build-ttgo-t-display-s3 -p PORT flash
+```
+
+After flashing the firmware and its partition table, create and flash the board configuration at its S3-specific hardware-NVS offset:
+
+```bash
+cd boards
+NVS_FLASH_OFFSET=0xc22000 ESPTOOL_CHIP=esp32s3 \
+  bash ./nvs_partition_generator.sh ttgo_tdisplay_s3.csv
+esptool.py --chip esp32s3 --port PORT write_flash 0xc22000 \
+  build/ttgo_tdisplay_s3.bin
+```
+
+The display uses PWR/BL/RST/CS/DC/WR/RD GPIOs 15/38/5/6/7/8/9, plus data GPIOs 39/40/41/42/45/46/47/48. `O_LCD_ROTA=0` is the normal landscape direction; set it to `1` for the opposite direction. The two onboard buttons are active-low: GPIO0 is Button A and GPIO14 is Button B. GPIO0 is also the BOOT strap, so do not hold it while resetting or powering on.
+
+The board has no audio output and ESP32-S3 has no built-in DAC. This profile leaves I2S pins disabled; configure an external I2S DAC on unused GPIOs before selecting audio output.
+
 ## GPIO Definition 
 The default configuration is given below. It includes an encoder, an IR remote and a LCD or OLED.  
 To add or edit GPIO definitions and add or remove some devices, you may need a hardware configuration file. Some examples are in the boards directory.  

@@ -16,7 +16,9 @@
 #include "soc/rtc.h"
 #include "esp_chip_info.h"
 #include <freertos/task.h>
+#if CONFIG_IDF_TARGET_ESP32
 #include <driver/dac.h>
+#endif
 #include "driver/gpio.h"
 #include "gpio.h"
 #include "app_main.h"
@@ -294,10 +296,10 @@ static bool set_sample_rate(int hz)
 	// Manually fix the APLL rate for 44100.
 	// See: https://github.com/espressif/esp-idf/issues/2634
 	// sdm0 = 28, sdm1 = 8, sdm2 = 5, odir = 0 -> 88199.977
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+#if CONFIG_IDF_TARGET_ESP32 && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 	rtc_clk_apll_coeff_set(0,  28, 8, 5);
 	rtc_clk_apll_enable(1);
-#else
+#elif CONFIG_IDF_TARGET_ESP32
 	rtc_clk_apll_enable(1, 28, 8, 5, 0);
 #endif
   }	  
@@ -531,12 +533,17 @@ bool  init_i2s(/*renderer_config_t *config*/)
 
     else if(config->output_mode == DAC_BUILT_IN)
     {
+#if CONFIG_IDF_TARGET_ESP32
 		config->bit_depth = I2S_BITS_PER_SAMPLE_16BIT;
         mode = mode | I2S_MODE_DAC_BUILT_IN;
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4, 3, 0)
         comm_fmt = I2S_COMM_FORMAT_STAND_MSB;
 #else	
 		comm_fmt = I2S_COMM_FORMAT_I2S_MSB;
+#endif
+#else
+		ESP_LOGE(TAG, "Built-in DAC is not available on this target");
+		return false;
 #endif
 	}
     else if(config->output_mode == PDM)
@@ -610,7 +617,9 @@ bool  init_i2s(/*renderer_config_t *config*/)
 //	ESP_LOGI(TAG,"i2s intr:%d", i2s_config.intr_alloc_flags);	
     if(config->output_mode == DAC_BUILT_IN)
     {
+#if CONFIG_IDF_TARGET_ESP32
         i2s_set_pin(config->i2s_num, NULL);
+#endif
     }
     else {
 		if (/*(lrck!=255) && (bclk!=255) && */(i2sdata!=255))

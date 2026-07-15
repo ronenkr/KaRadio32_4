@@ -34,6 +34,7 @@ idf_component_register(SRCS
 	"csrc/ucg_dev_tft_128x160_W_st7735.c"
 	"csrc/ucg_dev_tft_132x132_pcf8833.c"
 	"csrc/ucg_dev_tft_135x240_st7789.c"
+	"csrc/ucg_dev_tft_170x320_st7789_tdisplay_s3.c"
 	"csrc/ucg_dev_tft_240x240_st7789.c"
 	"csrc/ucg_dev_tft_240x320_ili9325_spi.c"
 	"csrc/ucg_dev_tft_240x320_ili9341.c"
@@ -42,6 +43,7 @@ idf_component_register(SRCS
 	"csrc/ucg_dev_tft_240x320_st7789.c"
 	"csrc/ucg_dev_tft_80x160_st7735.c"
 	"csrc/ucg_esp32_hal.c"
+	"csrc/ucg_tdisplay_s3_i80.c"
 	"csrc/ucg_font.c"
 	"csrc/ucg_init.c"
 	"csrc/ucg_karadio32_fonts.c"
@@ -53,5 +55,5 @@ idf_component_register(SRCS
 	"csrc/ucg_scale.c"
 	"csrc/ucg_vector_font_data.c"
                     INCLUDE_DIRS "csrc"				
-					PRIV_REQUIRES main
+					PRIV_REQUIRES main esp_lcd
 					)

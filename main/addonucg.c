@@ -8,11 +8,13 @@
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
+#include "sdkconfig.h"
 #include "driver/gpio.h"
 //#include "esp_heap_trace.h"
 #include "gpio.h"
 #include "addon.h"
 #include "ucg_esp32_hal.h"
+#include "ucg_tdisplay_s3_i80.h"
 #include "app_main.h"
 #include <time.h>
 #include "esp_log.h"
@@ -1077,28 +1079,62 @@ void lcd_initUcg(uint8_t *lcd_type)
 	ESP_LOGI(TAG,"lcd init  type: %d, Rotat: %d",*lcd_type, rotat);
 	if (*lcd_type == LCD_NONE) return;
 	
-	ucg_esp32_hal_t ucg_esp32_hal = UCG_ESP32_HAL_DEFAULT;
-	if (*lcd_type & LCD_SPI) // Color SPI
+#if CONFIG_IDF_TARGET_ESP32S3
+	if (*lcd_type == LCD_I80_ST7789_TDISPLAY_S3)
 	{
-		gpio_get_spi_bus(&spi_no,&miso,&mosi,&sclk);
-		gpio_get_spi_lcd(&cs ,&a0,&rstlcd);
-		ucg_esp32_hal.spi_no   = spi_no;
-		ucg_esp32_hal.clk   = sclk;
-		ucg_esp32_hal.mosi  = mosi;
-		ucg_esp32_hal.cs    = cs;
-		ucg_esp32_hal.dc    = a0;
-		if (rstlcd != GPIO_NONE) ucg_esp32_hal.reset = rstlcd;
-	} else //Color I2c (never seen this one)
-	{
-		gpio_get_i2c(&scl,&sda,&rsti2c);
-		ucg_esp32_hal.sda  = sda;
-		ucg_esp32_hal.scl  = scl;
-		ucg_esp32_hal.reset = rsti2c;
+		gpio_num_t power;
+		gpio_num_t backlight;
+		gpio_num_t wr;
+		gpio_num_t rd;
+		gpio_num_t data[8];
+		gpio_get_i80_lcd(&power, &backlight, &cs, &a0, &rstlcd, &wr, &rd, data);
+
+		ucg_tdisplay_s3_i80_pins_t pins = {
+			.power = power,
+			.backlight = backlight,
+			.reset = rstlcd,
+			.cs = cs,
+			.dc = a0,
+			.wr = wr,
+			.rd = rd,
+			.data = {data[0], data[1], data[2], data[3],
+					 data[4], data[5], data[6], data[7]},
+		};
+		if (!ucg_tdisplay_s3_i80_configure(&pins) ||
+			ucg_Init(&ucg, ucg_dev_st7789_18x170x320_tdisplay_s3,
+					 ucg_ext_st7789_tdisplay_s3,
+					 ucg_com_tdisplay_s3_i80) == 0)
+		{
+			ESP_LOGE(TAG,"T-Display S3 I80 initialization failed");
+			*lcd_type = LCD_NONE;
+			return;
+		}
 	}
+	else
+#endif
+	{
+		ucg_esp32_hal_t ucg_esp32_hal = UCG_ESP32_HAL_DEFAULT;
+		if (*lcd_type & LCD_SPI) // Color SPI
+		{
+			gpio_get_spi_bus(&spi_no,&miso,&mosi,&sclk);
+			gpio_get_spi_lcd(&cs ,&a0,&rstlcd);
+			ucg_esp32_hal.spi_no   = spi_no;
+			ucg_esp32_hal.clk   = sclk;
+			ucg_esp32_hal.mosi  = mosi;
+			ucg_esp32_hal.cs    = cs;
+			ucg_esp32_hal.dc    = a0;
+			if (rstlcd != GPIO_NONE) ucg_esp32_hal.reset = rstlcd;
+		} else //Color I2c (never seen this one)
+		{
+			gpio_get_i2c(&scl,&sda,&rsti2c);
+			ucg_esp32_hal.sda  = sda;
+			ucg_esp32_hal.scl  = scl;
+			ucg_esp32_hal.reset = rsti2c;
+		}
 		
-	ucg_esp32_hal_init(ucg_esp32_hal);	
+		ucg_esp32_hal_init(ucg_esp32_hal);
 		
-	switch (*lcd_type){		
+		switch (*lcd_type){
 // Color spi
 	case LCD_SPI_SSD1351:	
 		ucg_Init(&ucg, ucg_dev_ssd1351_18x128x128_ilsoft, ucg_ext_ssd1351_18, ucg_com_hal);
@@ -1143,7 +1179,8 @@ void lcd_initUcg(uint8_t *lcd_type)
 		ESP_LOGE(TAG,"lcd invalid type: %d, Fall back to LCD_NONE",*lcd_type);
 		*lcd_type = LCD_NONE;
 		return;
-	}	
+		}
+	}
 		
 		ESP_LOGI(TAG,"lcd init Color type: %d",*lcd_type);
 		// define prefered font rendering method (no text will be visibile, if this is missing 
@@ -1175,4 +1212,3 @@ void lcd_initUcg(uint8_t *lcd_type)
 		ESP_LOGI(TAG,"X: %d, yy: %d, y: %d",x,yy,y);
 		z = 0; 
 }
-

@@ -19,6 +19,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
  */
 
+#include "sdkconfig.h"
+
+/* The legacy WROOM32 crypto port is specific to the original ESP32. */
+#if CONFIG_IDF_TARGET_ESP32S3
+    #define NO_ESP32WROOM32_CRYPT
+#endif
+
 #define BENCH_EMBEDDED
 #define USE_CERT_BUFFERS_1024
 

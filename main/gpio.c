@@ -109,7 +109,7 @@ void gpio_get_spi_bus(uint8_t *spi_no,gpio_num_t *miso,gpio_num_t *mosi,gpio_num
 	if (miso != NULL)*miso = PIN_NUM_MISO;	
 	if (mosi != NULL)*mosi = PIN_NUM_MOSI;	
 	if (sclk != NULL)*sclk = PIN_NUM_CLK;
-	if (spi_no != NULL)*spi_no = VSPI_HOST;
+	if (spi_no != NULL)*spi_no = KSPI;
 	
 	if (open_partition(hardware, gpio_space,NVS_READONLY,&hardware_handle)!= ESP_OK)
 	{
@@ -578,6 +578,55 @@ void gpio_get_spi_lcd(gpio_num_t *cs ,gpio_num_t *a0,gpio_num_t *rstlcd)
 	if (err != ESP_OK) ESP_LOGD(TAG,"g_get_spi_lcd err 0x%x",err);
 
 	close_partition(hardware_handle,hardware);			
+}
+
+void gpio_get_i80_lcd(gpio_num_t *power, gpio_num_t *backlight,
+					  gpio_num_t *cs, gpio_num_t *a0, gpio_num_t *rstlcd,
+					  gpio_num_t *wr, gpio_num_t *rd, gpio_num_t data[8])
+{
+	esp_err_t err;
+	nvs_handle hardware_handle;
+
+	if (power != NULL) *power = GPIO_NONE;
+	if (backlight != NULL) *backlight = GPIO_NONE;
+	if (cs != NULL) *cs = GPIO_NONE;
+	if (a0 != NULL) *a0 = GPIO_NONE;
+	if (rstlcd != NULL) *rstlcd = GPIO_NONE;
+	if (wr != NULL) *wr = GPIO_NONE;
+	if (rd != NULL) *rd = GPIO_NONE;
+	if (data != NULL) {
+		for (size_t index = 0; index < 8; ++index) {
+			data[index] = GPIO_NONE;
+		}
+	}
+
+	if (open_partition(hardware, gpio_space, NVS_READONLY, &hardware_handle) != ESP_OK)
+	{
+		ESP_LOGD(TAG,"i80_lcd");
+		return;
+	}
+
+	err = ESP_OK;
+	if (power != NULL) err |= nvs_get_u8(hardware_handle, "P_LCD_PWR", (uint8_t *)power);
+	if (backlight != NULL) err |= nvs_get_u8(hardware_handle, "P_BACKLIGHT", (uint8_t *)backlight);
+	if (cs != NULL) err |= nvs_get_u8(hardware_handle, "P_LCD_CS", (uint8_t *)cs);
+	if (a0 != NULL) err |= nvs_get_u8(hardware_handle, "P_LCD_A0", (uint8_t *)a0);
+	if (rstlcd != NULL) err |= nvs_get_u8(hardware_handle, "P_LCD_RST", (uint8_t *)rstlcd);
+	if (wr != NULL) err |= nvs_get_u8(hardware_handle, "P_LCD_WR", (uint8_t *)wr);
+	if (rd != NULL) err |= nvs_get_u8(hardware_handle, "P_LCD_RD", (uint8_t *)rd);
+	if (data != NULL) {
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D0", (uint8_t *)&data[0]);
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D1", (uint8_t *)&data[1]);
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D2", (uint8_t *)&data[2]);
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D3", (uint8_t *)&data[3]);
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D4", (uint8_t *)&data[4]);
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D5", (uint8_t *)&data[5]);
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D6", (uint8_t *)&data[6]);
+		err |= nvs_get_u8(hardware_handle, "P_LCD_D7", (uint8_t *)&data[7]);
+	}
+	if (err != ESP_OK) ESP_LOGD(TAG,"g_get_i80_lcd err 0x%x",err);
+
+	close_partition(hardware_handle,hardware);
 }
 
 void gpio_get_ir_signal(gpio_num_t *ir)

@@ -1,8 +1,9 @@
 #!/bin/bash
 
-NVS_PARTITION_GENERATOR="nvs_partition_gen.py"
-#NVS_PARTITION_GENERATOR="nvs_partition_gen.py"
+NVS_PARTITION_GENERATOR="$IDF_PATH/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py"
 SIZE_PARTITION="0x3000"
+NVS_FLASH_OFFSET="${NVS_FLASH_OFFSET:-0x3e2000}"
+ESPTOOL_CHIP="${ESPTOOL_CHIP:-esp32}"
 
 cd "$(dirname $0)"
 echo "Jump into $PWD directory"
@@ -17,11 +18,10 @@ build_binary () {
 	echo -e "\nBoard \e[33m$fname\e[m"
 	comment="$(grep L_COMMENT $1 | sed -E 's/^.*,string,//; s/\s*\.\s*$//')"
 	echo -e "\e[34m${comment}\e[m"
-	python $NVS_PARTITION_GENERATOR\
-		--version v1\
-		--input "$1"\
-		--output "./build/$fname.bin"\
-		--size $SIZE_PARTITION
+	python "$NVS_PARTITION_GENERATOR" generate\
+		--version 1\
+		--outdir build\
+		"$1" "$fname.bin" "$SIZE_PARTITION"
 }
 
 if [ "$#" -eq 0 ]; then
@@ -48,5 +48,5 @@ Minimum NVS Partition Size needed is 0x3000 bytes. Look at this link :
 https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/storage/nvs_partition_gen.html#running-the-utility
 
 For flashing, type :
- esptool --chip esp32 write_flash 0x3e2000 build/${MY_BOARD}.bin
+ esptool --chip ${ESPTOOL_CHIP} write_flash ${NVS_FLASH_OFFSET} build/${MY_BOARD}.bin
 EOT

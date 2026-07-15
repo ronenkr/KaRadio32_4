@@ -24,12 +24,20 @@
 
 // Must be HSPI or VSPI
 
+#if CONFIG_IDF_TARGET_ESP32S3
+#define KSPI SPI3_HOST
+#else
 #define KSPI VSPI_HOST
+#endif
 
 // KSPI pins of the SPI bus
 //-------------------------
 #define PIN_NUM_MISO GPIO_NUM_19 	// Master Input, Slave Output
+#if CONFIG_IDF_TARGET_ESP32S3
+#define PIN_NUM_MOSI GPIO_NUM_17	// Master Output, Slave Input
+#else
 #define PIN_NUM_MOSI GPIO_NUM_23	// Master Output, Slave Input   Named Data or SDA or D1 for oled
+#endif
 #define PIN_NUM_CLK  GPIO_NUM_18 	// Master clock  Named SCL or SCK or D0 for oled
 
 // status led if any.
@@ -91,9 +99,17 @@
 
 // I2S DAC or PDM output
 //-----------------------
+#if CONFIG_IDF_TARGET_ESP32S3
+#define PIN_I2S_LRCK GPIO_NUM_15	// S3-safe fallback, normally overridden by NVS
+#else
 #define PIN_I2S_LRCK GPIO_NUM_25	// or Channel1
+#endif
 #define PIN_I2S_BCLK GPIO_NUM_26	// or channel2
+#if CONFIG_IDF_TARGET_ESP32S3
+#define PIN_I2S_DATA GPIO_NUM_16	// S3-safe fallback, normally overridden by NVS
+#else
 #define PIN_I2S_DATA GPIO_NUM_22	//  
+#endif
 
 // ADC for keyboard buttons
 #define PIN_ADC	GPIO_NONE	//GPIO_NUM_32 TO GPIO_NUM_39 or GPIO_NONE if not used.
@@ -138,6 +154,9 @@ void gpio_get_buttons(gpio_num_t *enca, gpio_num_t *encb, gpio_num_t *encc, gpio
 void gpio_get_joysticks(gpio_num_t *enca,gpio_num_t *enca1);
 void gpio_get_i2c(gpio_num_t *scl,gpio_num_t *sda,gpio_num_t *rsti2c);
 void gpio_get_spi_lcd(gpio_num_t *cs ,gpio_num_t *a0,gpio_num_t *rstlcd);
+void gpio_get_i80_lcd(gpio_num_t *power, gpio_num_t *backlight,
+					  gpio_num_t *cs, gpio_num_t *a0, gpio_num_t *rstlcd,
+					  gpio_num_t *wr, gpio_num_t *rd, gpio_num_t data[8]);
 void gpio_get_ir_signal(gpio_num_t *ir);
 void gpio_get_adc(adc1_channel_t  *channel, adc1_channel_t *chanbatt);
 void gpio_get_lcd_backlightl(gpio_num_t *lcdb);

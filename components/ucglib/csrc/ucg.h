@@ -172,6 +172,8 @@ ucg_int_t ucg_dev_seps225_16x128x128_univision(ucg_t *ucg, ucg_int_t msg, void *
 ucg_int_t ucg_dev_st7789_18x240x320(ucg_t *ucg, ucg_int_t msg, void *data);
 ucg_int_t ucg_dev_st7789_18x240x240(ucg_t *ucg, ucg_int_t msg, void *data);
 ucg_int_t ucg_dev_st7789_13x135x240(ucg_t *ucg, ucg_int_t msg, void *data);
+ucg_int_t ucg_dev_st7789_18x170x320_tdisplay_s3(ucg_t *ucg, ucg_int_t msg, void *data);
+ucg_int_t ucg_ext_st7789_tdisplay_s3(ucg_t *ucg, ucg_int_t msg, void *data);
 
 
 /*================================================*/
