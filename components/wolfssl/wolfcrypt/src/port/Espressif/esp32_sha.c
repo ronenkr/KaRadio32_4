@@ -256,7 +256,7 @@ static void esp_digest_state(WC_ESP32SHA* ctx, byte* hash, enum SHA_TYPE sha_typ
     /* wait until done */
     while(DPORT_REG_READ(SHA_BUSY_REG) == 1){ }
 
-    esp_dport_access_read_buffer((word32*)(hash), SHA_TEXT_BASE,
+	esp_dport_access_read_buffer((uint32_t *)(hash), SHA_TEXT_BASE,
                                  esp_sha_digest_size(sha_type)/sizeof(word32));
 
 #if defined(WOLFSSL_SHA512) || defined(WOLFSSL_SHA384)

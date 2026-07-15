@@ -25,7 +25,7 @@
 
 
 static fd_set readfds;
-xSemaphoreHandle semclient = NULL ;
+SemaphoreHandle_t semclient = NULL;
 
 
 const char strsocket[] = {"Socket"};

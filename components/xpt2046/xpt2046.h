@@ -14,7 +14,7 @@
 #include "driver/spi_master.h"
 #include "driver/i2c.h"
 bool haveTouch();
-void  getTaskLcd(xTaskHandle* hdt);
+void getTaskLcd(TaskHandle_t *hdt);
 void getTouchSize(int* w, int* h);
 void setTouchSize(int w, int h);
 bool xpt_read_touch(int *x, int* y, uint8_t raw);

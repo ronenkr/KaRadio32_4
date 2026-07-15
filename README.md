@@ -1,6 +1,6 @@
 ## STATE
-Release 2.3 R0 Stable  
-Verson adapted to ESP_IDF 4.4 Work in progress.  
+Release 2.4.0
+Targets ESP-IDF v5.4.2.
   
 Works on any esp32 board.  
 See the boards directory for a list of pre-configured boards.  
@@ -87,50 +87,20 @@ See : [Hardware configuration partition](HardwareConfig.md)
 For a wrover cpu you need a csv file with psram in the name. Without it, the default configuration will fail.  
 
 ## Build your own
-=======  
-To build your own release if you want to do some improvments, you must install the idf https://github.com/espressif/esp-idf and the toolchain. The esp-idf release is the 4.4 minimum.  
-See https://idf.espressif.com/index.html  
 
-### ESP-IDF Patch
-For the DAC output mode, the ESP_IDF must be patched.  
-#### DAC output:   
-``` @@ -983,9 +983,9 @@ static esp_err_t i2s_calculate_adc_dac_clock(int i2s_num, i2s_hal_clock_cfg_t *c
-    ESP_RETURN_ON_FALSE(p_i2s[i2s_num]->hal_cfg.mode & (I2S_MODE_DAC_BUILT_IN | I2S_MODE_ADC_BUILT_IN), ESP_ERR_INVALID_ARG, TAG, "current mode is not built-in ADC/DAC");
+This project targets ESP-IDF v5.4.2. The default configuration uses a dual-OTA partition table for a 4 MB flash chip; boards with less flash need a custom partition layout.
 
-    /* Set I2S bit clock */
-    - clk_cfg->bclk = p_i2s[i2s_num]->hal_cfg.sample_rate * I2S_LL_AD_BCK_FACTOR * 2;
-    + clk_cfg->bclk = p_i2s[i2s_num]->hal_cfg.sample_rate * I2S_LL_AD_BCK_FACTOR;
-    /* Set I2S bit clock default division */
-    - clk_cfg->bclk_div = I2S_LL_AD_BCK_FACTOR;
-    + clk_cfg->bclk_div = I2S_LL_AD_BCK_FACTOR * 16;
-    /* If fixed_mclk and use_apll are set, use fixed_mclk as mclk frequency, otherwise calculate by mclk = sample_rate * multiple */
-    clk_cfg->mclk = (p_i2s[i2s_num]->use_apll && p_i2s[i2s_num]->fixed_mclk) ?
-                    p_i2s[i2s_num]->fixed_mclk : clk_cfg->bclk * clk_cfg->bclk_div;
+```bash
+source /home/user/esp/v5.4.2/esp-idf/export.sh
+# Run this once after switching from an older ESP-IDF build directory.
+idf.py fullclean
+idf.py build
+idf.py -p PORT flash
 ```
-See https://github.com/espressif/esp-idf/pull/8327/files  
 
-To build output, run 'idf.py build' 
+No local ESP-IDF patch is required for DAC output with v5.4.2.
 
-```
-C:\Users\jp\esp\KaRadio32_4>idf.py build
-Executing action: all (aliases: build)
-Running ninja in directory c:\users\jp\esp\karadio32_4\build
-Executing "ninja all"...
-[1/9] Performing build step for 'bootloader'
-[1/1] cmd.exe /C "cd /D C:\Users\jp\esp\KaRadio32_4\build\bootloader\esp-idf\esptool_py && C:\Espressif\python_env\idf4.4_py3.8_env\Scripts\python.exe C:/Espressif/frameworks/esp-idf-v4.4/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 C:/Users/jp/esp/KaRadio32_4/build/bootloader/bootloader.bin"
-Bootloader binary size 0x57f0 bytes. 0x1810 bytes (21%) free.
-[6/7] Generating binary image from built executable
-esptool.py v3.2-dev
-Merged 25 ELF sections
-Generated C:/Users/jp/esp/KaRadio32_4/build/KaRadio32_4.bin
-[7/7] cmd.exe /C "cd /D C:\Users\jp\esp\KaRadio32_4\build\esp-id...ion-table.bin C:/Users/jp/esp/KaRadio32_4/build/KaRadio32_4.bin"
-KaRadio32_4.bin binary size 0x17d790 bytes. Smallest app partition is 0x1c0000 bytes. 0x42870 bytes (15%) free.
-
-Project build complete. To flash, run this command:
-C:\Espressif\python_env\idf4.4_py3.8_env\Scripts\python.exe ..\..\..\..\Espressif\frameworks\esp-idf-v4.4\components\esptool_py\esptool\esptool.py -p (PORT) -b 460800 --before default_reset --after hard_reset --chip esp32  write_flash --flash_mode dio --flash_size detect --flash_freq 40m 0x1000 build\bootloader\bootloader.bin 0x8000 build\partition_table\partition-table.bin 0xd000 build\ota_data_initial.bin 0x10000 build\KaRadio32_4.bin
-or run 'idf.py -p (PORT) flash'
-
-```
+The larger OTA image relocates the `hardware` NVS partition. Existing devices must be flashed over serial with the new partition table, then have their hardware configuration regenerated and flashed with the updated `boards` tooling before using OTA again.
 ## GPIO Definition 
 The default configuration is given below. It includes an encoder, an IR remote and a LCD or OLED.  
 To add or edit GPIO definitions and add or remove some devices, you may need a hardware configuration file. Some examples are in the boards directory.  
@@ -289,7 +259,7 @@ You can configure the kind of display used in your configuration with the comman
 - if the AP is already know by the esp32, the default ip is given by dhcp.
 - a sample of stations list is on http://karadio.karawin.fr/WebStations.txt . Can be uploaded via the web page.        
 
-To flash your KaRadio32 without generating it, you will need the files in the binaries directory.
+To flash your KaRadio32 without generating it, you will need the files in the binaries directory. Those prebuilt files have not been regenerated as part of the ESP-IDF v5.4.2 source migration; build from source using the instructions above for the migrated firmware.
 
 The tool to use is here :  
 http://espressif.com/en/support/download/other-tools  

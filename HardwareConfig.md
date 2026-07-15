@@ -5,63 +5,35 @@ This allows you to take advantage of the standard software even if your port con
 The configuration must be specified in a csv file.  
 A template is given by the pattern.csv file
 The default configuration of the current software is in the standard_adb.csv file.  
-A csv file is interpreted by an utility to generate a bin file that must be flashed at address 0x3a2000 only one time per esp32
+A csv file is interpreted by an utility to generate a bin file that must be flashed at address 0x3e2000 only one time per ESP32 when using the ESP-IDF 5.4 default partition table.
 
 ---------------
 1/ Prerequisite
 ---------------
-Toolchain Setup
---------------------
-The quick setup is to download the Windows all-in-one toolchain & MSYS2 zip file from dl.espressif.com. See  
 
-https://docs.espressif.com/projects/esp-idf/en/release-v3.3/get-started/windows-setup-scratch.html#configure-windows-toolchain-from-scratch
+Use ESP-IDF v5.4.2. From the project root, activate the ESP-IDF environment and generate the current partition table:
 
-- Unzip the zip file to C:\ (or some other location, but this guide assumes C:\) and it will create an msys32 directory with a pre-prepared environment.
-- Open a MSYS2 MINGW32 terminal window by running C:\msys32\mingw32.exe. Create a directory named "esp" that is a default location to develop ESP32 applications. To do so, run the following shell command: mkdir -p ~/esp
-- Type : cd ~/esp to move the newly created directory. If there are no error messages you are done with this step.
-- Type : git clone -b v3.1.2 --recursive https://github.com/espressif/esp-idf.git
-- Create a new script file in C:/msys32/etc/profile.d/ directory. Name it export_idf_path.sh
-Identify the path to ESP-IDF directory. It is specific to your system configuration and may look something like C:\msys32\home\"your-user-name"\esp\esp-idf
-Add this to the above created script file: export IDF_PATH="C:/msys32/home/"your-user-name/esp/esp-idf"
-Save the script file.
-- Close MSYS2 window and open it again. Check if IDF_PATH is set, by typing: printenv IDF_PATH
-The path previously entered in the script file should be printed out.
-- Type : pip install --upgrade setuptools  
-- Type : python -m pip install --upgrade pip
-- Type : pip install future
-- Type : pacman -S mingw-w64-i686-python2-cryptography
-- Type : pip install cryptography
-- Place the Ka-Radio32-master files in "your-user-name"/esp folder. Find it at https://github.com/karawin/Ka-Radio32
----
-  
-Second  make sure you have an updated partitions.bin file.  
-Find it at "your-user-name"/esp/Ka-Radio32/tree/master/binaries  
-This file contains the system partitions:
+```bash
+source /path/to/esp-idf/export.sh
+idf.py partition-table
 ```
-$ make partition_table
-Toolchain path: /opt/xtensa-esp32-elf/bin/xtensa-esp32-elf-gcc
-Toolchain version: crosstool-ng-1.22.0-80-g6c4433a5
-Compiler version: 5.2.0
-Python requirements from C:/msys32/home/jp/esp/esp-idf/requirements.txt are satisfied.
-Partition table binary generated. Contents:
-*******************************************************************************
-# Espressif ESP32 Partition Table
+
+The default 4 MB table is:
+
+```
 # Name, Type, SubType, Offset, Size, Flags
 nvs,data,nvs,0x9000,16K,
 otadata,data,ota,0xd000,8K,
 phy_init,data,phy,0xf000,4K,
-ota_0,app,ota_0,0x10000,1792K,
-ota_1,app,ota_1,0x1d0000,1792K,
-device,64,0,0x390000,4K,
-stations,65,0,0x391000,64K,
-device1,66,0,0x3a1000,4K,
-hardware,data,nvs,0x3a2000,8K,
-*******************************************************************************
-Partition flashing command:
-python /home/jp/esp/esp-idf/components/esptool_py/esptool/esptool.py --chip esp32 --port com5 --baud 460800 --before default_reset --after hard_reset write_flash 0x8000 /home/jp/esp/Ka-Radio32/build/partitions.bin
-************************************************ *****************************
+ota_0,app,ota_0,0x10000,1920K,
+ota_1,app,ota_1,0x1f0000,1920K,
+device,64,0,0x3d0000,4K,
+stations,65,0,0x3d1000,64K,
+device1,66,0,0x3e1000,4K,
+hardware,data,nvs,0x3e2000,12K,
 ```
-Compared to an old version, it adds the declaration of the partition "hardware" which interests us.
+
+The generated hardware configuration binary must be flashed at `0x3e2000`.
 
 Rename the pattern.csv file with the name of your c
 ard, for example lolin32.csv  
@@ -372,7 +344,7 @@ With ESP DOWNLOAD TOOL
 ![Screenshoot of download tool](https://raw.githubusercontent.com/karawin/Ka-Radio32/master/images/downloadtool32.jpg)
 
 
-or esptool.py command at address 0x3a2000  
+or esptool.py command at address 0x3e2000
 
 It seems that there is a problem with this ESP DOWNLOAD TOOL for flashing the bin alone.  
 In case of problem, flash it with another bin (bootloader.bin or KaRadio32.bin) 

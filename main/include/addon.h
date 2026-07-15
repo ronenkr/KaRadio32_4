@@ -93,7 +93,7 @@ typedef struct {
 #define ECTRL	2
 
 
-extern xQueueHandle event_ir;
+extern QueueHandle_t event_ir;
 extern u8g2_t u8g2;
 extern ucg_t ucg;
 void task_addon(void *pvParams);

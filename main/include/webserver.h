@@ -12,8 +12,8 @@
 
 #include "websocket.h"
 
-extern xSemaphoreHandle semclient;
-extern xSemaphoreHandle semfile;
+extern SemaphoreHandle_t semclient;
+extern SemaphoreHandle_t semfile;
 
 void serverclientTask(void *pvParams);
 void playStationInt(int sid);

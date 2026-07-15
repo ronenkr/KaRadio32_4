@@ -156,7 +156,7 @@ static void esp_aes_bk(const byte* in, byte* out)
     }
 
     /* read-out blocks */
-    esp_dport_access_read_buffer(outwords, AES_TEXT_BASE, 4);
+	esp_dport_access_read_buffer((uint32_t *)outwords, AES_TEXT_BASE, 4);
     ESP_LOGV(TAG, "leave esp_aes_bk");
 }
 

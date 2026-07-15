@@ -35,5 +35,4 @@ set(COMPONENT_ADD_INCLUDEDIRS
 
 register_component()
 component_compile_options(-Wno-error=unused-label -Wno-error=return-type -Wno-error=missing-braces 
--Wno-error=pointer-sign -Wno-error=parentheses -Wno-error=maybe-uninitialized -DWOLFSSL_USER_SETTINGS -DWOLFSSL_STATIC_RSA )
-
+	-Wno-error=pointer-sign -Wno-error=parentheses -Wno-error=maybe-uninitialized -Wno-error=format -DWOLFSSL_USER_SETTINGS -DWOLFSSL_STATIC_RSA )

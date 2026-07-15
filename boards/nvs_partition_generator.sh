@@ -49,5 +49,5 @@ Minimum NVS Partition Size needed is 0x3000 bytes. Look at this link :
 https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/storage/nvs_partition_gen.html#running-the-utility
 
 For flashing, type :
- esptool --chip esp32 write_flash 0x3a2000 build/${MY_BOARD}.bin
+ esptool --chip esp32 write_flash 0x3e2000 build/${MY_BOARD}.bin
 EOT

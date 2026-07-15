@@ -23,6 +23,7 @@ Copyright (C) 2017  KaraWin
 
 
 #include <stdio.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
@@ -110,7 +111,7 @@ void autoPlay();
 /* */
 static bool wifiInitDone = false;
 static EventGroupHandle_t wifi_event_group ;
-xQueueHandle event_queue;
+QueueHandle_t event_queue;
 
 //xSemaphoreHandle print_mux;
 static uint16_t FlashOn = 5,FlashOff = 5;
@@ -175,7 +176,7 @@ void* kcalloc(size_t elementCount, size_t elementSize)
 static bool msCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
 	BaseType_t high_task_awoken = pdFALSE;
-	xQueueHandle event_qu = (xQueueHandle)user_ctx;
+	QueueHandle_t event_qu = (QueueHandle_t)user_ctx;
 	queue_event_t evt;	
 	evt.type = TIMER_1MS;
     evt.i1 = 0;
@@ -207,7 +208,7 @@ static bool sleepCallback(gptimer_handle_t timer, const gptimer_alarm_event_data
 {
 	BaseType_t high_task_awoken = pdFALSE;
 	gptimer_stop(timer);	
-	xQueueHandle event_qu = (xQueueHandle)user_ctx;
+	QueueHandle_t event_qu = (QueueHandle_t)user_ctx;
 	queue_event_t evt;	
 	evt.type = TIMER_SLEEP;
     evt.i1 = 0;
@@ -232,7 +233,7 @@ static bool wakeCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_
 {
 	BaseType_t high_task_awoken = pdFALSE;
 	gptimer_stop(timer);	
-	xQueueHandle event_qu = (xQueueHandle)user_ctx;
+	QueueHandle_t event_qu = (QueueHandle_t)user_ctx;
 	queue_event_t evt;	
 	evt.type = TIMER_WAKE;
     evt.i1 = 0;
@@ -295,7 +296,7 @@ uint64_t getWake()
 void tsocket(const char* lab, uint32_t cnt)
 {
 		char* title = kmalloc(strlen(lab)+50);
-		sprintf(title,"{\"%s\":\"%d\"}",lab,cnt*60); 
+		sprintf(title, "{\"%s\":\"%" PRIu32 "\"}", lab, cnt * 60U);
 		websocketbroadcast(title, strlen(title));
 		free(title);	
 }
@@ -313,7 +314,7 @@ gptimer_alarm_config_t  alarm_config = {
     .flags.auto_reload_on_alarm = false, // enable auto-reload
 };
 void startSleep(uint32_t delay){
-	ESP_LOGD(TAG,"startSleep: %d min.",delay );
+	ESP_LOGD(TAG, "startSleep: %" PRIu32 " min.", delay);
 	ESP_ERROR_CHECK(gptimer_stop(sleeptimer));
 	vTaskDelay(1);
 	if (delay == 0) return;
@@ -332,7 +333,7 @@ gptimer_event_callbacks_t cbsw = {
 		.on_alarm = wakeCallback, // register user callback
 };
 void startWake(uint32_t delay){
-	ESP_LOGD(TAG,"startWake: %d min.",delay );
+	ESP_LOGD(TAG, "startWake: %" PRIu32 " min.", delay);
 	ESP_ERROR_CHECK(gptimer_stop(waketimer));
 	vTaskDelay(1);
 	if (delay == 0) return;
@@ -810,7 +811,13 @@ void start_network(){
 		else
 		{
 			ESP_ERROR_CHECK(esp_netif_set_ip_info(sta, &info));
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+			for (u8_t index = 0; index < DNS_MAX_SERVERS; ++index) {
+				dns_setserver(index, NULL);
+			}
+#else
 			dns_clear_servers(false);
+#endif
 			//dns_clear_cache();
 			IP_SET_TYPE((( ip_addr_t* )&info.gw), IPADDR_TYPE_V4); // mandatory
 //			(( ip_addr_t* )&info.gw)->type = IPADDR_TYPE_V4;
@@ -1041,15 +1048,15 @@ void autoPlay()
 void app_main()
 {
 	uint32_t uspeed;
-	xTaskHandle pxCreatedTask;
+	TaskHandle_t pxCreatedTask;
 	esp_err_t err;
 
 	ESP_LOGI(TAG, "starting app_main()");
-    ESP_LOGE(TAG, "RAM left: %u", esp_get_free_heap_size());
+    ESP_LOGE(TAG, "RAM left: %" PRIu32, esp_get_free_heap_size());
 
 	const esp_partition_t *running = esp_ota_get_running_partition();
-	ESP_LOGE(TAG, "Running partition type %d subtype %d (offset 0x%08x)",
-             running->type, running->subtype, running->address);
+	ESP_LOGE(TAG, "Running partition type %u subtype %u (offset 0x%08" PRIx32 ")",
+             (unsigned)running->type, (unsigned)running->subtype, running->address);
     // Initialize NVS.
     err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES) {
@@ -1191,7 +1198,7 @@ void app_main()
 	uspeed = g_device->uartspeed;	
 	uspeed = checkUart(uspeed);	
 	uart_set_baudrate(UART_NUM_0, uspeed);
-	ESP_LOGI(TAG, "Set baudrate at %d",uspeed);
+	ESP_LOGI(TAG, "Set baudrate at %" PRIu32, uspeed);
 	if (g_device->uartspeed != uspeed)
 	{
 		g_device->uartspeed = uspeed;
@@ -1207,7 +1214,7 @@ void app_main()
 //	ESP_LOGI(TAG, "Date: %s,  Time: %s",esp_ota_get_app_description()->date,esp_ota_get_app_description()->time);
 	ESP_LOGI(TAG, "SDK %s",esp_get_idf_version());	
 	ESP_LOGI(TAG, " Date %s, Time: %s\n", __DATE__,__TIME__ );
-	ESP_LOGI(TAG, "Heap size: %d",xPortGetFreeHeapSize());
+	ESP_LOGI(TAG, "Heap size: %" PRIu32, (uint32_t)xPortGetFreeHeapSize());
 
 	// lcd init
 	uint8_t rt;
@@ -1235,18 +1242,18 @@ void app_main()
 // start the network
 //-----------------------------
     /* init wifi & network*/
-	ESP_LOGE(TAG, "RAM left bw: %u", esp_get_free_heap_size());
+	ESP_LOGE(TAG, "RAM left bw: %" PRIu32, esp_get_free_heap_size());
     start_wifi();
-	ESP_LOGE(TAG, "RAM left aw: %u", esp_get_free_heap_size());
+	ESP_LOGE(TAG, "RAM left aw: %" PRIu32, esp_get_free_heap_size());
 	start_network();
-	ESP_LOGE(TAG, "RAM left an: %u", esp_get_free_heap_size());
+	ESP_LOGE(TAG, "RAM left an: %" PRIu32, esp_get_free_heap_size());
 	
 //-----------------------------------------------------
 //init softwares
 //-----------------------------------------------------
 
 	clientInit();	
-	ESP_LOGE(TAG, "RAM left ac: %u", esp_get_free_heap_size());
+	ESP_LOGE(TAG, "RAM left ac: %" PRIu32, esp_get_free_heap_size());
 	//initialize mDNS service
     err = mdns_init();
     if (err) 
@@ -1282,7 +1289,7 @@ void app_main()
 	// LCD Display infos
     lcd_welcome(localIp,"STARTED");
 	vTaskDelay(10);
-    ESP_LOGI(TAG, "RAM left %d", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "RAM left %" PRIu32, esp_get_free_heap_size());
 
 	//start tasks of KaRadio32
 	vTaskDelay(1);
@@ -1302,7 +1309,7 @@ void app_main()
 	kprintf("READY. Type help for a list of commands\n");
 	// error log on telnet
 	esp_log_set_vprintf( (vprintf_like_t)lkprintf);
-	ESP_LOGI(TAG, "RAM left %d", esp_get_free_heap_size());
+	ESP_LOGI(TAG, "RAM left %" PRIu32, esp_get_free_heap_size());
 	//autostart		
 	autoPlay();
 // All done.

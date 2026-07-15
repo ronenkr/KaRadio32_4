@@ -6,6 +6,7 @@
 
 #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 #define TAG "GPIO"
+#include <inttypes.h>
 #include "driver/gpio.h"
 #include "gpio.h"
 #include "nvs_flash.h"
@@ -14,7 +15,7 @@
 #include "eeprom.h"
 
 
-static xSemaphoreHandle muxnvs= NULL;
+static SemaphoreHandle_t muxnvs = NULL;
 const char hardware[] = {"hardware"};
 const char option_space[] = {"option_space"};
 const char gpio_space[] = {"gpio_space"};
@@ -705,12 +706,13 @@ bool gpio_get_ir_key(nvs_handle handle,const char *key, uint32_t *out_value1 , u
 	{
 		char* string = kmalloc(required_size);
 		nvs_get_str(handle, key, string, &required_size);	
-		sscanf(string,"%x %x",out_value1,out_value2);
+		sscanf(string, "%" SCNx32 " %" SCNx32, out_value1, out_value2);
 //		ESP_LOGV(TAG,"String \"%s\"\n Required size: %d",string,required_size);
 		free (string);
 		ret = true;
 	}
-	ESP_LOGV(TAG,"Key: %s, value1: %x, value2: %x, ret: %d",key,*out_value1,*out_value2,ret);	
+	ESP_LOGV(TAG, "Key: %s, value1: %" PRIx32 ", value2: %" PRIx32 ", ret: %d",
+			 key, *out_value1, *out_value2, ret);
 	
 	return ret;
 }

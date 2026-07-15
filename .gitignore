@@ -48,4 +48,5 @@ Temporary Items
 
 # do not save build directory
 /build
+managed_components/
 sdkconfig.old

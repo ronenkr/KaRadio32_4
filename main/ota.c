@@ -324,7 +324,7 @@ void update_firmware(char* fname)
 	if (!taskState)
 	{
 		taskState = true;
-		xTaskHandle pxCreatedTask;
+		TaskHandle_t pxCreatedTask;
 		xTaskCreatePinnedToCore(ota_task, "ota_task", 8192, fname, PRIO_OTA, &pxCreatedTask,CPU_OTA);
 		ESP_LOGI(TAG, "ota_task: %x",(unsigned int)pxCreatedTask);
 	} else

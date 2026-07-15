@@ -39,7 +39,7 @@ enum clientStatus cstatus;
 
 extern bool ledStatus;
 
-xSemaphoreHandle sConnect, sConnected, sDisconnect, sHeader;
+SemaphoreHandle_t sConnect, sConnected, sDisconnect, sHeader;
 
 static uint8_t once = 0;
 static uint8_t playing = 0;

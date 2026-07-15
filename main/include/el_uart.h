@@ -7,7 +7,7 @@
 
 #define UART0 0
 
-extern xQueueHandle  uart_rx_queue;
+extern QueueHandle_t uart_rx_queue;
 extern volatile uint16_t uart_rx_overruns;
 extern volatile uint16_t uart_rx_bytes;
 

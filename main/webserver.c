@@ -14,6 +14,7 @@
 #include "app_main.h"
 #include "ota.h"
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_system.h"
 #include "webclient.h"
 #include "vs1053.h"
@@ -30,7 +31,7 @@
 #define TAG "webserver"
 static char apMode[]= {"*Hidden*"};
 
-xSemaphoreHandle semfile = NULL ;
+SemaphoreHandle_t semfile = NULL;
 
 const char strsROK[]  =  {"HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: keep-alive\r\n\r\n%s"};
 const char tryagain[] = {"try again"};
@@ -62,8 +63,8 @@ static void *inmalloc(size_t n)
 static void infree(void *p)
 {
 	if (p != NULL)
-	{	free(p);
-		ESP_LOGV(TAG,"server free of %x,  Heap size: %d",(int)p,xPortGetFreeHeapSize( ));
+	{	ESP_LOGV(TAG,"server free of %x,  Heap size: %d",(int)p,xPortGetFreeHeapSize( ));
+		free(p);
 	}
 }
 
@@ -332,7 +333,7 @@ void playStationInt(int sid) {
 
 	si = getStation(sid);
 
-	if(si->domain && si->file) {
+	if (si != NULL && si->domain[0] != '\0' && si->file[0] != '\0') {
 			vTaskDelay(1);
 			clientSilentDisconnect();
 			ESP_LOGV(TAG,"playstationInt: %d, new station: %s",sid,si->name);

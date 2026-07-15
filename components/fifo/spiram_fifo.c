@@ -39,7 +39,7 @@ static unsigned fifoWpos;
 static unsigned fifoFill;
 //static xSemaphoreHandle semCanRead;
 //static xSemaphoreHandle semCanWrite;
-static xSemaphoreHandle mux = NULL;
+static SemaphoreHandle_t mux = NULL;
 static long fifoOvfCnt, fifoUdrCnt;
 
 //Low watermark where we restart the reader thread.

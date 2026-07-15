@@ -46,7 +46,7 @@ echo.output: ./build/%fname%.bin
 Python nvs_partition_gen.py  --version v1  --output "./build/%fname%.bin"  --input "%fname%%ext%"  --size 0x3000
 if %errorlevel% NEQ 0  (echo.error  %errorlevel% on the generation  for %fname%%ext%
 goto :eof)
-call:header %fname%.bin must be flashed at 0x3a2000
+call:header %fname%.bin must be flashed at 0x3e2000
 EXIT /B 0
 
 :header

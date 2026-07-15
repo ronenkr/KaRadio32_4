@@ -44,15 +44,15 @@ gpio_num_t dreq;
 static spi_device_handle_t vsspi;  // the evice handle of the vs1053 spi
 static spi_device_handle_t hvsspi;  // the device handle of the vs1053 spi high speed
 
-xSemaphoreHandle vsSPI = NULL;
-xSemaphoreHandle hsSPI = NULL;
+SemaphoreHandle_t vsSPI = NULL;
+SemaphoreHandle_t hsSPI = NULL;
 
-uint8_t spi_take_semaphore(xSemaphoreHandle isSPI) {
+uint8_t spi_take_semaphore(SemaphoreHandle_t isSPI) {
 	if(isSPI) if(xSemaphoreTake(isSPI, portMAX_DELAY)) return 1;
 	return 0;
 }
 
-void spi_give_semaphore(xSemaphoreHandle isSPI) {
+void spi_give_semaphore(SemaphoreHandle_t isSPI) {
 	if(isSPI) xSemaphoreGive(isSPI);
 }
 
@@ -697,5 +697,4 @@ void vsTask(void *pvParams) {
 	vTaskDelete(NULL);
 	
 }
-
 

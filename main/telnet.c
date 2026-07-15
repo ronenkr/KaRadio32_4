@@ -35,7 +35,7 @@ static bool inIac = false; // if in negociation
 static char *obrec;  //precedent received command
 static uint16_t irec;
 static uint8_t iiac;
-xSemaphoreHandle sTELNET = NULL;
+SemaphoreHandle_t sTELNET = NULL;
 
 static uint8_t telnet_take_semaphore() {
 	if(sTELNET) if(xSemaphoreTake(sTELNET, portMAX_DELAY)) return 1;
@@ -277,6 +277,5 @@ int telnetRead(int tsocket)
 	}
 	return recbytes;
 }
-
 
 

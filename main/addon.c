@@ -6,6 +6,7 @@
 
 #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 #include <stddef.h>
+#include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
 #include <sys/time.h>
@@ -45,12 +46,12 @@ static void evtClearScreen();
 const char *stopped = "STOPPED";	
 
 char irStr[4];
-xQueueHandle event_ir = NULL;
-xQueueHandle event_lcd = NULL;
+QueueHandle_t event_ir = NULL;
+QueueHandle_t event_lcd = NULL;
 u8g2_t u8g2; // a structure which will contain all the data for one display
 ucg_t  ucg;
 static uint8_t lcd_type;
-static xTaskHandle  pxTaskLcd;
+static TaskHandle_t pxTaskLcd;
 // list of screen
 typedef  enum typeScreen {smain,svolume,sstation,snumber,stime,snull} typeScreen ;
 static typeScreen stateScreen = snull;
@@ -570,8 +571,8 @@ void adcInit()
 		if (chanBat != GPIO_NONE)
 		{
 			isAdcBatt = true; 
-			adc1_config_channel_atten(chanBat, ADC_ATTEN_DB_11);
-			esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, DEFAULT_VREF, &characteristics);
+			adc1_config_channel_atten(chanBat, ADC_ATTEN_DB_12);
+			esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, DEFAULT_VREF, &characteristics);
 			if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP)
 			{
 				ESP_LOGI(TAG,"ADC: Characterized using Two Point Value");
@@ -659,26 +660,26 @@ void adcLoop() {
 		}
 		if ((voltage0 >3700) || (voltage1 >3700)) return; // must be two valid voltage	
 	
-		if (voltage < 985) ESP_LOGD(TAG,"Voltage: %i",voltage);	
+		if (voltage < 985) ESP_LOGD(TAG, "Voltage: %" PRIu32, voltage);
 //			printf("VOLTAGE: %d\n",voltage);
 		if ((voltage >400) && (voltage < 590)) // volume +
 		{
 			setRelVolume(+5);
 			wasVol = true;
-			ESP_LOGD(TAG,"Volume+ : %i",voltage);
+			ESP_LOGD(TAG, "Volume+ : %" PRIu32, voltage);
 		}
 		else if ((voltage >730) && (voltage < 830)) // volume -
 		{
 			setRelVolume(-5);
 			wasVol = true;
-			ESP_LOGD(TAG,"Volume- : %i",voltage);
+			ESP_LOGD(TAG, "Volume- : %" PRIu32, voltage);
 		}	
 		else if ((voltage >900) && (voltage < 985)) // station+
 		{
 			if (!wasVol)
 			{
 				evtStation(1);
-				ESP_LOGD(TAG,"station+: %i",voltage);
+				ESP_LOGD(TAG, "station+: %" PRIu32, voltage);
 			}
 		}	
 		else if ((voltage >620) && (voltage < 710)) // station-
@@ -686,7 +687,7 @@ void adcLoop() {
 			if (!wasVol)
 			{
 				evtStation(-1);
-				ESP_LOGD(TAG,"station-: %i",voltage);
+				ESP_LOGD(TAG, "station-: %" PRIu32, voltage);
 			}
 		}	
 		if (!inside)
@@ -695,13 +696,13 @@ void adcLoop() {
 			{
 				inside = true;
 				toggletime();
-				ESP_LOGD(TAG,"toggle time: %i",voltage);	
+				ESP_LOGD(TAG, "toggle time: %" PRIu32, voltage);
 			}
 			else if ((voltage >278) && (voltage < 380)) //start stop toggle   old start
 			{
 				inside = true;
 				startStop();
-				ESP_LOGD(TAG,"start stop: %i",voltage);
+				ESP_LOGD(TAG, "start stop: %" PRIu32, voltage);
 			}
 		}
 	}
@@ -895,7 +896,7 @@ bool irCustom(uint32_t evtir, bool repeat)
 			case KEY_INFO: if (!repeat ) toggletime();  break;
 			default: ;			
 		}
-		ESP_LOGV(TAG,"irCustom success, evtir %x, i: %d",evtir,i);
+		ESP_LOGV(TAG, "irCustom success, evtir %" PRIx32 ", i: %d", evtir, i);
 		return true;
 	}
 	return false;
@@ -913,7 +914,8 @@ event_ir_t evt;
 	{
 		wakeLcd();
 		uint32_t evtir = ((evt.addr)<<8)|(evt.cmd&0xFF);
-		ESP_LOGI(TAG,"IR event: Channel: %x, ADDR: %x, CMD: %x = %X, REPEAT: %d",evt.channel,evt.addr,evt.cmd, evtir,evt.repeat_flag );
+		ESP_LOGI(TAG, "IR event: Channel: %x, ADDR: %x, CMD: %x = %" PRIX32 ", REPEAT: %d",
+				 (unsigned)evt.channel, (unsigned)evt.addr, (unsigned)evt.cmd, evtir, evt.repeat_flag);
 		
 		if (isCustomKey){
 			if (irCustom(evtir,evt.repeat_flag)) continue;
@@ -1214,7 +1216,7 @@ void task_lcd(void *pvParams)
 				case estation:
 					if(xQueuePeek(event_lcd, &evt1, 0))
 						if (evt1.lcmd == estation) {evt.lline = NULL;break;}
-					ESP_LOGD(TAG,"estation val: %d",(uint32_t)evt.lline);
+					ESP_LOGD(TAG, "estation val: %" PRIuPTR, (uintptr_t)evt.lline);
 					changeStation((uint32_t)evt.lline);	
 					Screen(sstation);
 					wakeLcd();
@@ -1253,7 +1255,7 @@ extern void rmt_nec_rx_task();
 
 void task_addon(void *pvParams)
 {
-	xTaskHandle pxCreatedTask;
+	TaskHandle_t pxCreatedTask;
 	customKeyInit();
 	initButtonDevices();
 	adcInit();

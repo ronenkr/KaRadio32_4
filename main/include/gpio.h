@@ -7,6 +7,7 @@
 #ifndef __GPIO_H__
 #define __GPIO_H__
 #include "nvs_flash.h"
+#include "driver/adc.h"
 #include "driver/spi_master.h"
 #include "esp_adc_cal.h"
 #include "app_main.h"

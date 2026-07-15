@@ -33,7 +33,7 @@ static uint32_t tp_calx = 0x1100BC5; //‭17828805‬
 static uint32_t tp_caly = 0x2490ed2;
 static int width = 320;
 static int height = 240;
-xTaskHandle handleTaskLcd;
+TaskHandle_t handleTaskLcd;
 // ============= Touch panel functions =========================================
 void saveCalibration(uint32_t x, uint32_t y)
 {
@@ -53,7 +53,7 @@ void getTouchSize(int* w, int* h) {*w=width; *h=height; }
 
 bool haveTouch() {return haveTouchOn;}
 
-void  getTaskLcd(xTaskHandle* hdt){handleTaskLcd = *hdt;}
+void getTaskLcd(TaskHandle_t *hdt) { handleTaskLcd = *hdt; }
 
 void xpt_init()
 {	

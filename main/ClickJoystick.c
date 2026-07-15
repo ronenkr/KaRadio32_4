@@ -37,7 +37,7 @@ Joystick_t* ClickJoystickInit(int8_t A)
 	if (enc->channel != GPIO_NONE)
 	{
 		adc1_config_width(ADC_WIDTH_BIT_12);
-		adc1_config_channel_atten(enc->channel, ADC_ATTEN_DB_11);
+		adc1_config_channel_atten(enc->channel, ADC_ATTEN_DB_12);
 	}
 	
 	enc->pinsActive = HIGH; 
@@ -140,4 +140,3 @@ void getJoyStates(Joystick_t *enc, bool *ps) {
 }
 
   
-

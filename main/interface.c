@@ -9,6 +9,7 @@
 #define TAG "Interface"
 #include "interface.h"
 #include "stdio.h"
+#include <inttypes.h>
 #include "string.h"
 #include "stdlib.h"
 #include "eeprom.h"
@@ -31,6 +32,10 @@
 #include "lwip/netdb.h"
 
 #include "esp_system.h"
+#include "esp_idf_version.h"
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+#include "esp_netif.h"
+#endif
 #include "mdns.h"
 
 #include "esp_wifi.h"
@@ -173,6 +178,7 @@ int lkprintf(const char *format, va_list ap)
   
 // send to all telnet clients
   if (logTel) vTelnetWrite(i,format,ap); 
+  return i;
 }
 
 
@@ -411,12 +417,20 @@ void wifiDisconnect()
 
 void wifiStatus()
 {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+	esp_netif_ip_info_t ipi = { 0 };
+	esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+	if (sta_netif != NULL) {
+		esp_netif_get_ip_info(sta_netif, &ipi);
+	}
+#else
 	tcpip_adapter_ip_info_t ipi;	
 	tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipi);
+#endif
 	kprintf(stritWIFISTATUS,
-			  (ipi.ip.addr&0xff), ((ipi.ip.addr>>8)&0xff), ((ipi.ip.addr>>16)&0xff), ((ipi.ip.addr>>24)&0xff),
-			 (ipi.netmask.addr&0xff), ((ipi.netmask.addr>>8)&0xff), ((ipi.netmask.addr>>16)&0xff), ((ipi.netmask.addr>>24)&0xff),
-			 (ipi.gw.addr&0xff), ((ipi.gw.addr>>8)&0xff), ((ipi.gw.addr>>16)&0xff), ((ipi.gw.addr>>24)&0xff));
+			  (int)(ipi.ip.addr & 0xff), (int)((ipi.ip.addr >> 8) & 0xff), (int)((ipi.ip.addr >> 16) & 0xff), (int)((ipi.ip.addr >> 24) & 0xff),
+			 (int)(ipi.netmask.addr & 0xff), (int)((ipi.netmask.addr >> 8) & 0xff), (int)((ipi.netmask.addr >> 16) & 0xff), (int)((ipi.netmask.addr >> 24) & 0xff),
+			 (int)(ipi.gw.addr & 0xff), (int)((ipi.gw.addr >> 8) & 0xff), (int)((ipi.gw.addr >> 16) & 0xff), (int)((ipi.gw.addr >> 24) & 0xff));
 }
 
 void wifiGetStation()
@@ -780,9 +794,9 @@ void sysUart(char* s)
 		speed = checkUart(speed);
 		g_device->uartspeed= speed;
 		saveDeviceSettings(g_device);	
-		kprintf("Speed: %d\n",speed);
+		kprintf("Speed: %" PRIu32 "\n", speed);
 	}
-	kprintf("\n%sUART= %d# on next reset\n",msgsys,g_device->uartspeed);	
+	kprintf("\n%sUART= %" PRIu32 "# on next reset\n", msgsys, g_device->uartspeed);
 }
 
 void clientVol(char *s)
@@ -1079,7 +1093,7 @@ void syslcdout(char* s)
 	if(t == NULL)
 	{
 		kprintf("##LCD out is ");
-		kprintf("%d#\n",lcd_out);
+		kprintf("%" PRIu32 "#\n", lcd_out);
 		return;
 	}
 	char *t_end  = strstr(t, parquoteslash);
@@ -1103,7 +1117,7 @@ void syslcdstop(char* s)
 	if(t == NULL)
 	{
 		kprintf("##LCD stop is ");
-		kprintf("%d#\n",lcd_stop);
+		kprintf("%" PRIu32 "#\n", lcd_stop);
 		return;
 	}
 	char *t_end  = strstr(t, parquoteslash);

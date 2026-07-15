@@ -15,6 +15,7 @@
 //#include "driver/uart.h"
 
 #include "eeprom.h"
+#include <inttypes.h>
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
@@ -27,7 +28,7 @@
 #define PARTITIONLEN		4096
 
 const static char *TAG = "eeprom";
-static xSemaphoreHandle muxDevice;
+static SemaphoreHandle_t muxDevice;
 
 const esp_partition_t * DEVICE;
 const esp_partition_t * DEVICE1;
@@ -152,7 +153,7 @@ void saveStation(struct shoutcast_info *station, uint16_t position) {
 	if (position > NBSTATIONS-1) {ESP_LOGE(TAG,"saveStation fails pos=%d",position);return;}
 	while (!eeSetData((position)*256, station, 256)) 
 	{
-		ESP_LOGW(TAG,"Retrying %d on saveStation",i);
+		ESP_LOGW(TAG, "Retrying %" PRIu32 " on saveStation", i);
 		vTaskDelay ((i+1)*20+100) ;
 		i++; 
 		if (i == 10) return;
@@ -164,7 +165,7 @@ void saveMultiStation(struct shoutcast_info *station, uint16_t position, uint8_t
 	if (number <= 0) return;
 	while (!eeSetData((position)*256, station, number*256))
 	{		
-		ESP_LOGW(TAG,"Retrying %d on SaveMultiStation for %d stations",i,number);
+		ESP_LOGW(TAG, "Retrying %" PRIu32 " on SaveMultiStation for %d stations", i, number);
 		vTaskDelay ((i++)*20+100) ;
 //		if (i == 3) {clientDisconnect("saveMultiStation low Memory"); vTaskDelay (300) ;}
 		if (i == 10) return;
