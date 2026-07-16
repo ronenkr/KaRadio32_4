@@ -140,21 +140,10 @@ static void bootButtonTask(void *pvParams)
 	int lastLevel = gpio_get_level(BOOT_BUTTON_GPIO);
 	uint32_t heldMs = 0;
 	bool longPressFired = false;
-	uint32_t heartbeatMs = 0;
 	printf("bootButtonTask started, initial GPIO0 level=%d\n", lastLevel);
 	while (1)
 	{
 		int level = gpio_get_level(BOOT_BUTTON_GPIO);
-		// Heartbeat, independent of any transition - proves whether this
-		// task is even getting scheduled during playback, vs. the pin
-		// reading a stuck level (two very different problems that look
-		// identical from "nothing happens").
-		heartbeatMs += BOOT_BUTTON_POLL_MS;
-		if (heartbeatMs >= 2000)
-		{
-			heartbeatMs = 0;
-			printf("bootButtonTask heartbeat, level=%d\n", level);
-		}
 		if (level != lastLevel)
 		{
 			printf("Boot button (GPIO0) %s\n", (level == 0) ? "PRESSED" : "released");
