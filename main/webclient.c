@@ -99,6 +99,23 @@ void test_https()
 	else https = false;
 }
 
+// Scale the streaming buffer with the PSRAM actually detected at boot
+// (e.g. 8 MB on an ESP32-S3 vs. 4 MB on a classic wrover), instead of the
+// flat BIGRAM size used for every "big ram" board. Falls back to BIGRAM
+// if no PSRAM size could be determined.
+static unsigned bigSramBufferSize()
+{
+	unsigned size = BIGRAM*1024;
+	size_t psram = bigSramTotal();
+	if (psram > 0)
+	{
+		size_t chunk = psram / BIGRAM_DIVISOR;
+		if (chunk > (size_t)BIGRAM_MAX*1024) chunk = BIGRAM_MAX*1024;
+		if (chunk > size) size = chunk;
+	}
+	return size;
+}
+
 //compute the size of the audio buffer for https or http
 void ramSinit()
 {
@@ -121,8 +138,9 @@ void ramSinit()
 	{
 		if (bigSram())
 		{
-			if (getSPIRAMSIZE() == BIGRAM*1024) return; // no need
-			setSPIRAMSIZE(BIGRAM*1024);		// more free heap
+			unsigned size = bigSramBufferSize();
+			if (getSPIRAMSIZE() == size) return; // no need
+			setSPIRAMSIZE(size);		// more free heap
 		}
 		else
 		{
@@ -986,8 +1004,13 @@ void clientReceiveCallback(int sockfd, char *pdata, int len)
 	static int metad ;
 	static int rest ;
 	static uint16_t dloop;
-	static IRAM_ATTR  uint32_t chunked;
-	static IRAM_ATTR  uint32_t cchunk;
+	// Plain DRAM statics. These were declared IRAM_ATTR (an attribute meant
+	// for functions), which places DATA in instruction RAM. The classic ESP32
+	// tolerates word-sized data access to IRAM, but on ESP32-S3 the store
+	// faults: "chunked = 0" below raised the "Cache disabled but cached
+	// memory region accessed" panic on every stream start.
+	static uint32_t chunked;
+	static uint32_t cchunk;
 	static char* metadata = NULL;
 	uint16_t l =0;
 	uint32_t lc;
@@ -998,6 +1021,16 @@ void clientReceiveCallback(int sockfd, char *pdata, int len)
 	char* t1;
 	char* t2;
 	bool  icyfound;
+
+	// pdata is the raw network receive buffer (bufrec), reused across reads
+	// and connections with no guaranteed terminator beyond the bytes just
+	// received. Every strstr() below assumes a C string, so if this read is
+	// shorter than whatever previously occupied the buffer, they'd scan
+	// straight past len into stale/uninitialized memory - which is exactly
+	// what produced the "Cache disabled but cached memory region accessed"
+	// crashes here. bufrec has slack past RECEIVE (see clientTask) for
+	// exactly this: terminate at the bytes actually received.
+	pdata[len] = 0;
 
 //	if (cstatus != C_DATA) {printf("cstatus= %d\n",cstatus);  printf("Len=%d, Byte_list = %s\n",len,pdata);}
 	if (cstatus != C_DATA)
@@ -1085,24 +1118,34 @@ void clientReceiveCallback(int sockfd, char *pdata, int len)
 						t1+= 4;
 						if ( t2 != NULL)
 						{
-							while (len -(t1-pdata)<8) {
+							// Wait until the chunk-size line (terminated by \n) has
+							// fully arrived. Bound the search to the bytes actually
+							// received (len): the old code only waited for 8 bytes
+							// and then blindly ran strtol/strchr on t1, so a read
+							// error or a chunk-size line split oddly across reads
+							// left it scanning past received data with no
+							// terminator, running off into unmapped memory.
+							char *nl;
+							bool chunkError = false;
+							while ((nl = memchr(t1, 0x0A, len - (t1-pdata))) == NULL)
+							{
+								if (len >= RECEIVE+8) { chunkError = true; break; } // chunk-size line too long/garbled
 								vTaskDelay(1);
 								int ilen;
 								if (https)
-								{
 									ilen = wolfSSL_read(ssl, pdata+len, RECEIVE+8-len);
-									if (ilen >0) len += ilen;
-								}
 								else
-								{
-									ilen = recv(sockfd, pdata+len, RECEIVE+8-len, 0); 
-									if (ilen >0) len += ilen; 
-								}
-								if (ilen <0) {clientDisconnect("chunk2");break;}							
+									ilen = recv(sockfd, pdata+len, RECEIVE+8-len, 0);
+								if (ilen >0) len += ilen;
+								else if (ilen <0) { chunkError = true; break; }
+							}
+							if (chunkError || nl == NULL)
+							{
+								clientDisconnect("chunk2");
+								break;
 							}
 							chunked = (uint32_t) strtol(t1, NULL, 16) +2;
-							if (strchr((t1),0x0A) != NULL)
-								*strchr(t1,0x0A) = 0;
+							*nl = 0;
     						ESP_LOGD(TAG,"chunked: %d,  strlen: %d  \"%s\"",chunked,strlen(t1)+1,t1);
 							t1 +=strlen(t1)+1; //+1 for char 0,
 						}
@@ -1120,9 +1163,10 @@ void clientReceiveCallback(int sockfd, char *pdata, int len)
 					if (https)
 						bread = wolfSSL_read(ssl, pdata+len, RECEIVE-len);
 					else
-						bread = recvfrom(sockfd, pdata+len, RECEIVE-len, 0, NULL, NULL);					
+						bread = recvfrom(sockfd, pdata+len, RECEIVE-len, 0, NULL, NULL);
 					if (bread <0) {clientDisconnect("header11");break;}
 					if (bread >0) len += bread;
+					pdata[len] = 0; // re-terminate: the header search below scans the grown buffer again
 				}
 			} while (t1 == NULL);
 		}

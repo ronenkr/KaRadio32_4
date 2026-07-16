@@ -25,6 +25,11 @@
 #define SMALLRAM 	50
 // for wrover
 #define BIGRAM		400
+// upper bound on the streaming buffer, regardless of detected PSRAM size,
+// so plenty is always left for TLS, decoders, and the display
+#define BIGRAM_MAX	4096
+// fraction of the detected PSRAM to dedicate to the streaming buffer
+#define BIGRAM_DIVISOR	4
 
 
 typedef enum

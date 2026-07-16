@@ -233,6 +233,10 @@ void setVolumei(int16_t vol) {
 }
 void setVolume(char* vol) {
 	int16_t uvol = atoi(vol);
+	// Diagnostic: catch any caller that sets volume directly, bypassing
+	// setRelVolume(). Decode with:
+	// xtensa-esp32s3-elf-addr2line -e build/KaRadio32_4.elf -f -C <addr>
+	printf("setVolume(\"%s\") called from %p\n", vol, __builtin_return_address(0));
 	setIvol(uvol);
 	uvol += clientOvol;
 	if (uvol > 254) uvol = 254;
@@ -265,6 +269,9 @@ uint16_t getVolume() {
 void setRelVolume(int8_t vol) {
 	char Vol[5];
 	int16_t rvol;
+	// Diagnostic: identify exactly which caller keeps driving volume to 0.
+	// Decode the address with: xtensa-esp32s3-elf-addr2line -e build/KaRadio32_4.elf -f -C <addr>
+	printf("setRelVolume(%d) called from %p\n", vol, __builtin_return_address(0));
 	rvol = getIvol()+vol;
 	if (rvol <0) rvol = 0;
 	if (rvol > 254) rvol = 254;

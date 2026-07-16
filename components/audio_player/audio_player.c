@@ -30,6 +30,13 @@
 static player_t *player_instance = NULL;
 static component_status_t player_status = UNINITIALIZED;
 
+// Absolute floor (in bytes) on top of the percentage-based fill_level check
+// below, for PSRAM-equipped boards. The percentage alone can still be a
+// small absolute amount (e.g. right after ramSinit() shrinks the buffer on
+// a failed allocation retry), which isn't enough cushion for a source that
+// periodically stalls for several seconds at a time.
+#define PREBUFFER_MIN_BYTES (100 * 1024)
+
 static int start_decoder_task(player_t *player)
 {
     TaskFunction_t task_func;
@@ -108,10 +115,13 @@ int audio_stream_consumer(const char *recv_buf, ssize_t bytes_read)
 	{
 //		t = 0;
 		int bytes_in_buf = spiRamFifoFill();
-		uint8_t fill_level = (bytes_in_buf * 100) / spiRamFifoLen();
+		int fifo_len = spiRamFifoLen();
+		uint8_t fill_level = (bytes_in_buf * 100) / fifo_len;
+		int prebuffer_floor = bigSram() ? PREBUFFER_MIN_BYTES : 0;
+		if (prebuffer_floor > fifo_len) prebuffer_floor = fifo_len; // never wait past a full buffer
 
 		//bool buffer_ok = (fill_level > (bigSram()?15:80)); // in %
-		if ((fill_level > (bigSram()?15:80)))
+		if ((fill_level > (bigSram()?15:80)) && (bytes_in_buf >= prebuffer_floor))
 		{
 			t = 0;
 		// buffer is filled, start decoder

@@ -33,7 +33,7 @@
 #define STARTUP_TONE_DURATION_MS 500U
 #define STARTUP_TONE_BUFFER_FRAMES 441U
 #define STARTUP_TONE_REPEAT_COUNT 50U
-#define STARTUP_TONE_AMPLITUDE 8192
+#define STARTUP_TONE_AMPLITUDE 16384	// 50% of int16 full scale (32768)
 
 static renderer_config_t *renderer_instance = NULL;
 static component_status_t renderer_status = UNINITIALIZED;
@@ -641,6 +641,7 @@ bool  init_i2s(/*renderer_config_t *config*/)
 
 
 // apll if possible, not for PDM
+#if CONFIG_IDF_TARGET_ESP32
 	if ((config->output_mode == I2S)||(config->output_mode == I2S_MERUS)
 			|| (config->output_mode == SPDIF) )
 	{
@@ -652,6 +653,14 @@ bool  init_i2s(/*renderer_config_t *config*/)
 		} else
 			ESP_LOGD(TAG, "chip rev. %d, cannot enable APLL", out_info.revision);
 	}
+#else
+	// The rev0-APLL-errata check above is classic-ESP32-specific silicon
+	// history; out_info.revision on other targets (S2/S3/C3...) means
+	// something unrelated, so this was unconditionally turning APLL on for
+	// every non-original-ESP32 chip regardless of whether it's actually
+	// well-calibrated there. Use the standard I2S clock derivation instead.
+	(void)out_info;
+#endif
  
 	int bc = bigSram()?12:8;
 	int bl = bigSram()?256:128;

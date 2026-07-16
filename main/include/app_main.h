@@ -107,6 +107,7 @@ output_mode_t get_audio_output_mode() ;
 uint8_t getIvol();
 void setIvol( uint8_t vol);
 bool bigSram();
+size_t bigSramTotal();
 
 void* kmalloc(size_t memorySize);
 void* kcalloc(size_t elementCount, size_t elementSize);

@@ -29,6 +29,26 @@ uint8_t rexp; // expansion ports for esplay
 	
 //bool getpinsActives(Button_t *enc) {return enc->pinsActive;}
 
+// gpio_config() alone can silently fail to (re)apply a pull resistor on a
+// pin that still carries a pad hold from a previous deep-sleep/RTC config
+// (GPIO0 and other low-numbered pins are RTC-capable on ESP32-S3). Clear
+// any leftover hold and re-assert the intended pull explicitly, instead of
+// trusting the input to float toward whatever level nearby noise picks.
+static void buttonPinPullFixup(gpio_num_t pin, bool activeLevel)
+{
+	gpio_hold_dis(pin);
+	if (activeLevel == LOW)
+	{
+		gpio_pullup_en(pin);
+		gpio_pulldown_dis(pin);
+	}
+	else
+	{
+		gpio_pulldown_en(pin);
+		gpio_pullup_dis(pin);
+	}
+}
+
 Button_t* ClickButtonsInit(int8_t A, int8_t B, int8_t C, bool Active)
 {
 	Button_t* enc = kmalloc(sizeof(Button_t));
@@ -56,18 +76,21 @@ Button_t* ClickButtonsInit(int8_t A, int8_t B, int8_t C, bool Active)
   {
 	gpio_conf.pin_bit_mask = ((uint64_t)(((uint64_t)1)<<enc->pinBTN[0]));
 	ESP_ERROR_CHECK(gpio_config(&gpio_conf));
+	buttonPinPullFixup((gpio_num_t)enc->pinBTN[0], enc->pinsActive);
   }
   if (enc->pinBTN[1] != (int8_t) GPIO_NONE)
   {
 	gpio_conf.pin_bit_mask = ((uint64_t)(((uint64_t)1)<<enc->pinBTN[1]));
 	ESP_ERROR_CHECK(gpio_config(&gpio_conf));
+	buttonPinPullFixup((gpio_num_t)enc->pinBTN[1], enc->pinsActive);
   }
   if (enc->pinBTN[2] != (int8_t) GPIO_NONE)
   {
 	gpio_conf.pin_bit_mask = ((uint64_t)(((uint64_t)1)<<enc->pinBTN[2]));
 	ESP_ERROR_CHECK(gpio_config(&gpio_conf));
+	buttonPinPullFixup((gpio_num_t)enc->pinBTN[2], enc->pinsActive);
   }
-  
+
   return enc;
 }
 

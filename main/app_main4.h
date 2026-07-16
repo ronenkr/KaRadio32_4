@@ -98,6 +98,17 @@ const int CONNECTED_BIT = 0x00000001;
 //
 const int CONNECTED_AP  = 0x00000010;
 
+// A scan (WIFI_ALL_CHANNEL_SCAN) + association round trip to a defined AP can
+// legitimately take several seconds, especially with a weak signal or a busy
+// router. Give each AP several attempts at a generous timeout before rotating
+// to the next one, instead of abandoning it after a single short wait.
+#define WIFI_CONNECT_TIMEOUT_MS		6000
+#define WIFI_CONNECT_RETRY_COUNT	3
+// Same idea for the DHCP lease request once associated: a slow DHCP server
+// should not immediately force a static-IP fallback and reboot.
+#define WIFI_DHCP_TIMEOUT_MS		6000
+#define WIFI_DHCP_RETRY_COUNT		3
+
 #define TAG "main"
 
 //Priorities of the reader and the decoder thread. bigger number = higher prio
@@ -125,6 +136,8 @@ static uint8_t clientIvol = 0;
 static char localIp[20];
 // 4MB sram?
 static bool bigRam = false;
+// total PSRAM detected at boot, in bytes (0 if none/not yet probed)
+static size_t bigRamTotal = 0;
 // timeout to save volume in flash
 //static uint32_t ctimeVol = 0;
 static uint32_t ctimeMs = 0;	
@@ -155,8 +168,12 @@ IRAM_ATTR uint8_t getIvol() {return clientIvol;}
 IRAM_ATTR void setIvol( uint8_t vol) {clientIvol = vol;}; //ctimeVol = 0;}
 IRAM_ATTR output_mode_t get_audio_output_mode() { return audio_output_mode;}
 
-// 
+//
 bool bigSram() { return bigRam;}
+// total PSRAM available, in bytes - lets buffer sizing scale with the
+// actual chip (e.g. 8 MB on an ESP32-S3 vs. 4 MB on a classic wrover)
+// instead of a single flat size for every "big ram" board.
+size_t bigSramTotal() { return bigRamTotal;}
 void* kmalloc(size_t memorySize)
 {
 	if (bigRam) return heap_caps_malloc(memorySize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -173,7 +190,7 @@ void* kcalloc(size_t elementCount, size_t elementSize)
 
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
-static bool msCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
+IRAM_ATTR static bool msCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
 	BaseType_t high_task_awoken = pdFALSE;
 	QueueHandle_t event_qu = (QueueHandle_t)user_ctx;
@@ -204,7 +221,7 @@ IRAM_ATTR void   msCallback(void *pArg) {
 #endif	
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
-static bool sleepCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
+IRAM_ATTR static bool sleepCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
 	BaseType_t high_task_awoken = pdFALSE;
 	gptimer_stop(timer);	
@@ -229,7 +246,7 @@ void   sleepCallback(void *pArg) {
 }
 #endif	
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
-static bool wakeCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
+IRAM_ATTR static bool wakeCallback(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
 {
 	BaseType_t high_task_awoken = pdFALSE;
 	gptimer_stop(timer);	
@@ -514,6 +531,29 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     {
     case WIFI_EVENT_STA_START:
 		FlashOn = FlashOff = 100;
+		// Tolerate a much longer run of missed beacons before declaring the
+		// link dead. The default is only 6s, so on a weak/fading -85 dBm
+		// signal a brief dropout trips WIFI_REASON_BEACON_TIMEOUT (reason
+		// 200) almost immediately. 60s lets the connection ride through
+		// fades instead of tearing down and reconnecting constantly.
+		esp_wifi_set_inactive_time(WIFI_IF_STA, 60);
+		{
+			// esp_wifi_set_max_tx_power() requires WiFi to already be
+			// started (this event is the first valid place to call it), but
+			// it also writes into the same wifi_country_t.max_tx_power field
+			// esp_wifi_set_country() configured at init - calling it again
+			// on every single reconnect attempt was re-touching that struct
+			// on every retry and is the most likely reason the 1-13 channel
+			// scan range stopped taking effect reliably. Apply it exactly
+			// once. 80 (quarter-dBm units) maps cleanly to 20 dBm, matching
+			// both the country max_tx_power and CONFIG_ESP_PHY_MAX_WIFI_TX_POWER.
+			static bool txPowerSet = false;
+			if (!txPowerSet)
+			{
+				esp_wifi_set_max_tx_power(80);
+				txPowerSet = true;
+			}
+		}
         esp_wifi_connect();
         break;
 		
@@ -534,34 +574,42 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         break;
 
     case WIFI_EVENT_STA_DISCONNECTED:
-        /* This is a workaround as ESP32 WiFi libs don't currently
-           auto-reassociate. */
 		FlashOn = FlashOff = 100;
 		xEventGroupClearBits(wifi_event_group, CONNECTED_AP);
         xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
-		ESP_LOGE(TAG, "Wifi Disconnected.");
-		vTaskDelay(100);
-        if (!getAutoWifi()&&(wifiInitDone)) 
 		{
-			ESP_LOGE(TAG, "reboot");
-			vTaskDelay(100);			
-			esp_restart();
-		} else
+			wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *) event_data;
+			ESP_LOGE(TAG, "Wifi Disconnected. reason: %d, rssi: %d", disconn->reason, disconn->rssi);
+		}
+
+		if (wifiInitDone)
 		{
-			if (wifiInitDone) // a completed init done
+			// We were fully up and lost the link. NEVER reboot for this -
+			// a beacon timeout / weak-signal drop (reason 200 etc.) is
+			// transient and the AP is almost always still there. Just keep
+			// re-associating forever, backing off a little so we don't spin
+			// the CPU or hammer the radio. The stream is silently paused;
+			// autoPlay() on WIFI_EVENT_STA_CONNECTED resumes it once back.
+			clientSilentDisconnect();
+			clientSaveOneHeader("Wifi lost, reconnecting...", 26, METANAME);
+
+			esp_err_t cerr = esp_wifi_connect();
+			if (cerr != ESP_OK)
 			{
-				ESP_LOGE(TAG, "Connection tried again");
-//				clientDisconnect("Wifi Disconnected.");
-				clientSilentDisconnect();
-				vTaskDelay(100);
-				clientSaveOneHeader("Wifi Disconnected.",18,METANAME);	
-				vTaskDelay(100);
-				while (esp_wifi_connect() == ESP_ERR_WIFI_SSID) vTaskDelay(10);
-			} else 
-			{
-				ESP_LOGE(TAG, "Try next AP");
-				vTaskDelay(100);	
-			} // init failed?
+				ESP_LOGW(TAG, "reconnect esp_wifi_connect: 0x%x, backing off", cerr);
+				vTaskDelay(pdMS_TO_TICKS(1000));
+				// A single failed reconnect must not be fatal; the next
+				// disconnect/timeout cycle (or the retry below) tries again.
+				while (esp_wifi_connect() == ESP_ERR_WIFI_SSID)
+					vTaskDelay(pdMS_TO_TICKS(1000));
+			}
+		}
+		else
+		{
+			// Still in the initial bring-up loop in start_wifi(): let that
+			// loop rotate to the next configured AP / AP-fallback mode.
+			ESP_LOGE(TAG, "Try next AP");
+			vTaskDelay(100);
 		}
         break;
 
@@ -623,12 +671,44 @@ static void start_wifi()
 		ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
 		ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
 		ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+		// ESP-IDF's default country config is {"01", schan=1, nchan=11} -
+		// world-safe mode limited to channels 1-11. Plenty of 2.4 GHz APs
+		// outside North America (incl. Israel, much of Europe/Asia) use
+		// channel 12 or 13, which the scan would then simply never see,
+		// producing a bogus WIFI_REASON_NO_AP_FOUND for an SSID/password
+		// that are actually correct. Widen scanning to the globally-legal
+		// 1-13 range; MANUAL policy keeps it from being narrowed back down
+		// once connected to an AP that advertises a smaller range.
+		{
+			wifi_country_t country = {
+				.cc = "01",
+				.schan = 1,
+				.nchan = 13,
+				.max_tx_power = 20,
+				.policy = WIFI_COUNTRY_POLICY_MANUAL,
+			};
+			ESP_ERROR_CHECK(esp_wifi_set_country(&country));
+		}
+		// Keep the radio awake. The default WIFI_PS_MIN_MODEM sleeps the
+		// modem between the AP's beacons, which on a weak/busy link makes it
+		// miss beacons and drop with WIFI_REASON_BEACON_TIMEOUT (reason 200).
+		// This device is mains-powered and streaming continuously, so there
+		// is no reason to power-save - disabling it markedly improves both
+		// link stability and effective receive reliability.
+		ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 		ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_NULL));
 		initialized = true;
 	}
 	ESP_LOGI(TAG, "WiFi init done!");
-	
-	if (g_device->current_ap == APMODE) 
+	// Dump what was actually loaded from the "device" NVS partition, so a
+	// misconfigured/empty/truncated SSID or password can be told apart from
+	// a real connection failure. current_ap: 0=AP mode, 1=ssid1, 2=ssid2.
+	printf("Stored wifi config: current_ap=%d, ssid1=\"%s\" (len %d, pass len %d), ssid2=\"%s\" (len %d, pass len %d)\n",
+		g_device->current_ap,
+		g_device->ssid1, strlen(g_device->ssid1), strlen(g_device->pass1),
+		g_device->ssid2, strlen(g_device->ssid2), strlen(g_device->pass2));
+
+	if (g_device->current_ap == APMODE)
 	{
 		if (strlen(g_device->ssid1) !=0)
 		{
@@ -691,7 +771,8 @@ static void start_wifi()
 		}
 		else
 		{
-			printf("WIFI TRYING TO CONNECT TO SSID %d\n",g_device->current_ap);
+			printf("WIFI TRYING TO CONNECT TO SSID %d: \"%s\" (len %d), pass len %d\n",
+				g_device->current_ap, ssid, strlen(ssid), strlen(pass));
 			wifi_config_t wifi_config = {
 				.sta = {
 					.bssid_set = 0,
@@ -732,8 +813,27 @@ static void start_wifi()
 			}				
 		}
 
-		/* Wait for the callback to set the CONNECTED_BIT in the event group. */
-		if ( (xEventGroupWaitBits(wifi_event_group, CONNECTED_AP,false, true, 2000) & CONNECTED_AP) ==0) 
+		/* Wait for the callback to set the CONNECTED_AP bit in the event group.
+		   Retry the same AP a few times at a generous timeout before giving
+		   up on it, since one slow/failed attempt doesn't mean the AP is
+		   unreachable. AP mode sets the bit almost immediately, so it will
+		   simply succeed on the first attempt below. */
+		bool apConnected = false;
+		for (int attempt = 0; attempt < WIFI_CONNECT_RETRY_COUNT; attempt++)
+		{
+			if ( (xEventGroupWaitBits(wifi_event_group, CONNECTED_AP, false, true,
+					WIFI_CONNECT_TIMEOUT_MS / portTICK_PERIOD_MS) & CONNECTED_AP) != 0)
+			{
+				apConnected = true;
+				break;
+			}
+			if (g_device->current_ap == APMODE) break;
+			ESP_LOGW(TAG, "Attempt %d/%d to connect to %s timed out, retrying",
+					 attempt + 1, WIFI_CONNECT_RETRY_COUNT, ssid);
+			esp_wifi_connect();
+		}
+
+		if (!apConnected)
 		//timeout . Try the next AP
 		{
 			g_device->current_ap++;
@@ -742,13 +842,13 @@ static void start_wifi()
 			{
 				char inp = fgetc(stdin);
 				printf("\nfgetc : %x\n",inp);
-				if (inp==0xFF) // 
+				if (inp==0xFF) //
 					g_device->current_ap = STA1;//if a char read, stop the autowifi
 			}
 			saveDeviceSettings(g_device);
-			ESP_LOGI(TAG,"device->current_ap: %d",g_device->current_ap);	
+			ESP_LOGI(TAG,"device->current_ap: %d",g_device->current_ap);
 		}
-		else break;	// 						
+		else break;	//
 		first_pass = true;
 	}					
 }
@@ -830,18 +930,44 @@ void start_network(){
 		}
 
 		
-		// wait for ip						
-		if ( (xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,false, true, 3000) & CONNECTED_BIT) ==0) //timeout	
-		{ // enable dhcp and restart
-			if (g_device->current_ap ==1)
+		// wait for ip. Retry a few times before concluding the (static) IP
+		// configuration is unreachable and falling back to DHCP + reboot -
+		// a DHCP server can legitimately take longer than one short wait.
+		bool gotIp = false;
+		for (int attempt = 0; attempt < WIFI_DHCP_RETRY_COUNT; attempt++)
+		{
+			if ( (xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+					WIFI_DHCP_TIMEOUT_MS / portTICK_PERIOD_MS) & CONNECTED_BIT) != 0)
+			{
+				gotIp = true;
+				break;
+			}
+			ESP_LOGW(TAG, "Waiting for IP address, attempt %d/%d", attempt + 1, WIFI_DHCP_RETRY_COUNT);
+		}
+		if (!gotIp) //timeout on the configured (static) IP
+		{
+			// Recover in place instead of rebooting: persist the DHCP
+			// preference for next boot, then start the DHCP client now and
+			// keep waiting. A missing IP must never reset the device.
+			ESP_LOGW(TAG, "No IP with current config, falling back to DHCP (no reboot)");
+			if (g_device->current_ap == 1)
 				g_device->dhcpEn1 = 1;
 			else
 				g_device->dhcpEn2 = 1;
-			saveDeviceSettings(g_device);	
-			esp_restart();
+			saveDeviceSettings(g_device);
+			esp_netif_dhcpc_start(sta);
+			// Wait for DHCP to hand us a lease. The event handler keeps
+			// re-associating underneath if the link itself drops, so this
+			// only blocks progress, it can't wedge the device.
+			while ((xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true,
+					WIFI_DHCP_TIMEOUT_MS / portTICK_PERIOD_MS) & CONNECTED_BIT) == 0)
+			{
+				ESP_LOGW(TAG, "Still waiting for DHCP lease...");
+			}
+			dhcpEn = 1;
 		}
-		
-		vTaskDelay(1);	
+
+		vTaskDelay(1);
 		// retrieve the current ip	
 		esp_netif_ip_info_t sta_ip_info;
 		sta_ip_info.ip.addr = 0;
@@ -1074,6 +1200,7 @@ void app_main()
 	
 	// Check if we are in large Sram config
 	if (xPortGetFreeHeapSize() > 0x80000) bigRam = true;
+	bigRamTotal = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
 	//init hardware	
 	partitions_init();
 	ESP_LOGI(TAG, "Partition init done...");
@@ -1304,7 +1431,7 @@ void app_main()
     xTaskCreatePinnedToCore(serversTask, "serversTask", 3100, NULL, PRIO_SERVER, &pxCreatedTask,CPU_SERVER); 
 	ESP_LOGI(TAG, "%s task: %x","serversTask",(unsigned int)pxCreatedTask);	
 	vTaskDelay(1);
-	xTaskCreatePinnedToCore (task_addon, "task_addon", 2200, NULL, PRIO_ADDON, &pxCreatedTask,CPU_ADDON);  
+	xTaskCreatePinnedToCore (task_addon, "task_addon", 6144, NULL, PRIO_ADDON, &pxCreatedTask,CPU_ADDON);
 	ESP_LOGI(TAG, "%s task: %x","task_addon",(unsigned int)pxCreatedTask);	
 
 	vTaskDelay(60);// wait tasks init

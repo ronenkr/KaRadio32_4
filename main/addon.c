@@ -376,39 +376,44 @@ void drawNumber()
 // draw the station screen
 void drawStation()
 {
-  char sNum[7] ; 
-  char* ddot;
+  char sNum[7] ;
+  char* ddot = NULL;
   char* ptl ;
-  struct shoutcast_info* si;
+  struct shoutcast_info* si = NULL;
+  int tries = 0;
 
  //ClearBuffer();
-	
+
   do {
 	si = getStation(futurNum);
 	sprintf(sNum,"%d",futurNum);
-	ddot = si->name;    
+	ddot = si->name;
 	ptl = ddot;
 	while ( *ptl == 0x20){ddot++;ptl++;}
 	if (strlen(ddot)==0) // don't start an undefined station
 	{
-		playable = false; 
+		playable = false;
 		free(si);
+		si = NULL;
 		if (currentValue < 0) {
-			futurNum--; 
+			futurNum--;
 			if (futurNum <0) futurNum = 254;
 		}
 		else {
 			futurNum++;
 			if (futurNum > 254) futurNum = 0;
 		}
-	}	
-	else 
-		playable = true;                      
-  } while (playable == false); 
-	
-  //drawTTitle(ststr); 
+		vTaskDelay(1); // yield between flash reads instead of spinning the watchdog
+	}
+	else
+		playable = true;
+  } while ((playable == false) && (++tries <= 255)); // bounded: an all-empty station list must not loop forever
+
+  if (!playable || si == NULL) return; // no playable station anywhere in the list
+
+  //drawTTitle(ststr);
 //printf ("drawStation: %s\n",sNum  );
-  if (lcd_type != LCD_NONE) 
+  if (lcd_type != LCD_NONE)
 	isColor?drawStationUcg(mTscreen,sNum,ddot):drawStationU8g2(mTscreen,sNum,ddot);
   free (si);
 }
@@ -1024,9 +1029,17 @@ void initButtonDevices()
 	
 	gpio_get_buttons(&enca0, &encb0, &encbtn0,&enca1, &encb1, &encbtn1);
 	gpio_get_active_buttons(&abtn0, &abtn1);
-	if (enca1 == GPIO_NONE) isButton1 = false; //no buttons
+	// Diagnostic: confirm what the flashed hardware NVS partition actually
+	// contains for button0/button1, since it's a separate flash step from
+	// firmware and can silently lag behind boards/*.csv edits.
+	printf("button0 pins: A=%d B=%d C=%d active=%d, button1 pins: A=%d B=%d C=%d active=%d\n",
+		enca0, encb0, encbtn0, abtn0, enca1, encb1, encbtn1, abtn1);
+	// A button set is usable as soon as any of its three pins is wired, not
+	// only when the "A" (start/stop) pin is: a two-button board can still
+	// use B/C as a plain volume/station pair without a start/stop button.
+	if ((enca1 == GPIO_NONE) && (encb1 == GPIO_NONE) && (encbtn1 == GPIO_NONE)) isButton1 = false; //no buttons
 	else button1 = ClickButtonsInit(enca1, encb1, encbtn1,abtn1 );
-	if (enca0 == GPIO_NONE) isButton0 = false; //no buttons	
+	if ((enca0 == GPIO_NONE) && (encb0 == GPIO_NONE) && (encbtn0 == GPIO_NONE)) isButton0 = false; //no buttons
 	else button0 = ClickButtonsInit(enca0, encb0, encbtn0,abtn0);
 
 	if (!option_get_esplay())
