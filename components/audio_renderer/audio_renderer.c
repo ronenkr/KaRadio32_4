@@ -33,7 +33,15 @@
 #define STARTUP_TONE_DURATION_MS 500U
 #define STARTUP_TONE_BUFFER_FRAMES 441U
 #define STARTUP_TONE_REPEAT_COUNT 50U
-#define STARTUP_TONE_AMPLITUDE 16384	// 50% of int16 full scale (32768)
+#define STARTUP_TONE_AMPLITUDE 3277	// 10% of int16 full scale (32768)
+
+// Digital gain ceiling applied to the whole volume curve below, in the same
+// Q8.16-ish fixed point as renderer_instance->volume (0x10000 == unity/
+// passthrough gain). Full unity at the top of the slider was clipping/too
+// loud through this DAC+amp chain, so the loudest setting is scaled down to
+// this fraction of unity instead of 0x10000. Tune directly if still too
+// loud/quiet at max.
+#define RENDERER_VOLUME_MAX 0x8000 // 50% of unity (-6dB headroom at max)
 
 static renderer_config_t *renderer_instance = NULL;
 static component_status_t renderer_status = UNINITIALIZED;
@@ -84,19 +92,32 @@ DRAM_ATTR static const uint16_t SPDIF_BMCLOOKUP[256] = {
 void IRAM_ATTR renderer_volume(uint32_t vol)
 {
 	// log volume (magic)
-	if (vol == 1) return;  // volume 0
-//	ESP_LOGI(TAG, "Renderer vol: %d %X",vol,vol );
-	if (vol >= 255) 
+	if (vol <= 1)
 	{
-		renderer_instance->volume = 0x10000;
-		ESP_LOGD(TAG, "Renderer volume max:  %d  %X",renderer_instance->volume,renderer_instance->volume );
+		// True mute. The previous "return" here left renderer_instance->volume
+		// at whatever it was set to before - so turning the slider all the
+		// way down did nothing and the last (louder) level kept playing.
+		renderer_instance->volume = 0;
 		return;
 	}
-	vol = 255  - vol;
-	uint32_t value = (log10(255/((float)vol+1)) * 105.54571334);	
-//	ESP_LOGI(TAG, "Renderer value: %X",value );
-	if (value >= 254) value = 256;
-	renderer_instance->volume = value<<8; // *256
+//	ESP_LOGI(TAG, "Renderer vol: %d %X",vol,vol );
+	uint32_t raw;
+	if (vol >= 255)
+	{
+		raw = 0x10000; // unity - scaled down to RENDERER_VOLUME_MAX below
+	}
+	else
+	{
+		uint32_t v = 255  - vol;
+		uint32_t value = (log10(255/((float)v+1)) * 105.54571334);
+//		ESP_LOGI(TAG, "Renderer value: %X",value );
+		if (value >= 254) value = 256;
+		raw = value<<8; // *256
+	}
+	// Scale the whole 0..unity curve so the loudest slider position lands at
+	// RENDERER_VOLUME_MAX instead of full unity, preserving the log taper
+	// shape (and thus a smooth low end) while lowering the ceiling.
+	renderer_instance->volume = (uint32_t)(((uint64_t)raw * RENDERER_VOLUME_MAX) >> 16);
 	ESP_LOGD(TAG, "Renderer volume:  %X",renderer_instance->volume );
 }
 //-----------

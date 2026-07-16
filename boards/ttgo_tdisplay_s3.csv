@@ -19,8 +19,8 @@ P_ENC0_BTN,data,u8,255
 P_ENC1_A,data,u8,255
 P_ENC1_B,data,u8,255
 P_ENC1_BTN,data,u8,255
-P_BTN0_A,data,u8,255
-P_BTN0_B,data,u8,14
+P_BTN0_A,data,u8,14
+P_BTN0_B,data,u8,255
 P_BTN0_C,data,u8,255
 P_BTN1_A,data,u8,255
 P_BTN1_B,data,u8,255

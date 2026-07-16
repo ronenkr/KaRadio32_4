@@ -47,6 +47,7 @@ Temporary Items
 .apdisk
 
 # do not save build directory
+build-ttgo-t-display-s3/
 /build
 managed_components/
 sdkconfig.old

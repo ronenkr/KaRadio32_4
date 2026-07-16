@@ -1325,7 +1325,7 @@ void app_main()
 	audio_output_mode = g_device->audio_output_mode;
 	ESP_LOGI(TAG, "audio_output_mode %d\nOne of I2S=0, I2S_MERUS, DAC_BUILT_IN, PDM, VS1053, SPDIF",audio_output_mode);
 	renderer_init(create_renderer_config());
-	renderer_play_startup_tone();
+	//renderer_play_startup_tone();
 
 	//uart speed
 	uspeed = g_device->uartspeed;	
