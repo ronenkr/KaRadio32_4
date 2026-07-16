@@ -12,6 +12,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include "esp_sleep.h"
+#include "driver/rtc_io.h"
 #include "ClickEncoder.h"
 #include "ClickButtons.h"
 #include "ClickJoystick.h"
@@ -104,6 +105,75 @@ battery_state out_state;
 
 //backlight value
 static int blv = 100;
+
+// ----------------------------------------------------------------------------
+// Boot button (GPIO0) - standalone dedicated task, not routed through the
+// CSV-configurable button0/button1 framework or the msCallback ISR chain, so
+// it doesn't disturb whatever's assigned to P_BTN0_*/P_BTN1_*, doesn't need a
+// hardware-partition reflash, and isn't subject to ISR-context logging
+// restrictions. Just polls the raw pin level and prints on every transition.
+#define BOOT_BUTTON_GPIO GPIO_NUM_0
+#define BOOT_BUTTON_POLL_MS 50
+#define BOOT_BUTTON_HOLD_MS 1000
+
+static void bootButtonInit(void)
+{
+	if (rtc_gpio_is_valid_gpio(BOOT_BUTTON_GPIO)) rtc_gpio_deinit(BOOT_BUTTON_GPIO);
+	gpio_hold_dis(BOOT_BUTTON_GPIO);
+	gpio_config_t conf = {
+		.pin_bit_mask = 1ULL << BOOT_BUTTON_GPIO,
+		.mode = GPIO_MODE_INPUT,
+		.pull_up_en = GPIO_PULLUP_ENABLE,
+		.pull_down_en = GPIO_PULLDOWN_DISABLE,
+		.intr_type = GPIO_INTR_DISABLE,
+	};
+	gpio_config(&conf);
+}
+
+static void bootButtonTask(void *pvParams)
+{
+	// plain printf, not ESP_LOGI: ESP_LOGI is filtered by the runtime log
+	// level (setLogLevel(g_device->trace_level) at boot, default
+	// ESP_LOG_ERROR - see app_main4.h), so it's silently dropped unless the
+	// device's log level has been raised via sys.logi/sys.logd/etc. printf
+	// bypasses that filter entirely.
+	int lastLevel = gpio_get_level(BOOT_BUTTON_GPIO);
+	uint32_t heldMs = 0;
+	bool longPressFired = false;
+	uint32_t heartbeatMs = 0;
+	printf("bootButtonTask started, initial GPIO0 level=%d\n", lastLevel);
+	while (1)
+	{
+		int level = gpio_get_level(BOOT_BUTTON_GPIO);
+		// Heartbeat, independent of any transition - proves whether this
+		// task is even getting scheduled during playback, vs. the pin
+		// reading a stuck level (two very different problems that look
+		// identical from "nothing happens").
+		heartbeatMs += BOOT_BUTTON_POLL_MS;
+		if (heartbeatMs >= 2000)
+		{
+			heartbeatMs = 0;
+			printf("bootButtonTask heartbeat, level=%d\n", level);
+		}
+		if (level != lastLevel)
+		{
+			printf("Boot button (GPIO0) %s\n", (level == 0) ? "PRESSED" : "released");
+			lastLevel = level;
+			heldMs = 0;
+			longPressFired = false;
+		}
+		if (level == 0) // still held
+		{
+			heldMs += BOOT_BUTTON_POLL_MS;
+			if (!longPressFired && (heldMs >= BOOT_BUTTON_HOLD_MS))
+			{
+				longPressFired = true;
+				printf("Boot button (GPIO0) LONG PRESS\n");
+			}
+		}
+		vTaskDelay(pdMS_TO_TICKS(BOOT_BUTTON_POLL_MS));
+	}
+}
 
 void Screen(typeScreen st); 
 void drawScreen();
@@ -1271,6 +1341,15 @@ void task_addon(void *pvParams)
 	TaskHandle_t pxCreatedTask;
 	customKeyInit();
 	initButtonDevices();
+	bootButtonInit();
+	// CPU_ADDON (core 0) also hosts webclient/webserver/telnet/uart/timer -
+	// raising priority to PRIO_ADDON wasn't enough to stay responsive once
+	// streaming starts, so try CPU_MAD (core 1) instead: that core only
+	// really has the decoder task (PRIO_MAD, higher than anything we could
+	// reasonably use), but it blocks/yields waiting on FIFO/DMA between
+	// buffers rather than running flat-out, so there should be gaps this
+	// light polling task can use.
+	xTaskCreatePinnedToCore(bootButtonTask, "bootButtonTask", 2048, NULL, PRIO_ADDON, NULL, CPU_MAD);
 	adcInit();
 	
 	serviceAddon = &multiService;		; // connect the 1ms interruption

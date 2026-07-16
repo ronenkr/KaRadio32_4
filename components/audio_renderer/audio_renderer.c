@@ -705,8 +705,11 @@ bool  init_i2s(/*renderer_config_t *config*/)
 	gpio_num_t i2sdata;
 	gpio_get_i2s(&lrck ,&bclk ,&i2sdata );
 
-	i2s_pin_config_t pin_config = 
+	i2s_pin_config_t pin_config =
 	{
+				.mck_io_num = I2S_PIN_NO_CHANGE, // NOT setting this defaults it to GPIO0 (0), which
+				                                  // makes i2s_set_pin() below silently claim GPIO0 as
+				                                  // MCLK output the instant playback starts.
 				.bck_io_num = bclk,
 				.ws_io_num = lrck,
 				.data_out_num = i2sdata,
