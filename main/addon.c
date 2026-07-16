@@ -1307,11 +1307,18 @@ void task_addon(void *pvParams)
 		if (itAskTime) // time to ntp. Don't do that in interrupt.
 		{			
 			if (ntp_get_time(&dt) )
-			{	
+			{
+				printf("NTP raw (pre-TZ): tm_year=%d tm_mon=%d tm_mday=%d %02d:%02d:%02d\n",
+					dt->tm_year, dt->tm_mon, dt->tm_mday, dt->tm_hour, dt->tm_min, dt->tm_sec);
 				applyTZ(dt);
-				timestamp = mktime(dt); 
-				syncTime = true;				
-			} 
+				timestamp = mktime(dt);
+				printf("NTP after TZ: tm_year=%d tm_mon=%d tm_mday=%d %02d:%02d:%02d, tzoffseth=%d tzoffsetm=%d, timestamp=%ld\n",
+					dt->tm_year, dt->tm_mon, dt->tm_mday, dt->tm_hour, dt->tm_min, dt->tm_sec,
+					g_device->tzoffseth, g_device->tzoffsetm, (long)timestamp);
+				syncTime = true;
+			} else {
+				printf("NTP sync failed (ntp_get_time returned false)\n");
+			}
 			itAskTime = false;
 		}	
 		

@@ -1198,9 +1198,19 @@ void app_main()
     }
     ESP_ERROR_CHECK( err );
 	
-	// Check if we are in large Sram config
-	if (xPortGetFreeHeapSize() > 0x80000) bigRam = true;
+	// Check if we are in large Sram config. This used to be a heuristic
+	// ("total free heap > 512K at boot implies PSRAM"), but whether PSRAM
+	// is folded into the general heap pool that xPortGetFreeHeapSize()
+	// counts depends on CONFIG_SPIRAM_USE_MALLOC and heap capability
+	// wiring - it's an indirect proxy for PSRAM presence, not PSRAM
+	// presence itself, and can under-detect a genuinely PSRAM-equipped
+	// board (e.g. T-Display S3). Query the actual PSRAM size directly
+	// instead - same call bigSramTotal()/bigSramBufferSize() already rely
+	// on elsewhere, so this stays internally consistent.
 	bigRamTotal = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+	if (bigRamTotal > 0) bigRam = true;
+	ESP_LOGI(TAG, "PSRAM detect: xPortGetFreeHeapSize=%" PRIu32 ", PSRAM total=%u bytes, bigRam=%d",
+		xPortGetFreeHeapSize(), (unsigned)bigRamTotal, bigRam);
 	//init hardware	
 	partitions_init();
 	ESP_LOGI(TAG, "Partition init done...");
@@ -1325,7 +1335,7 @@ void app_main()
 	audio_output_mode = g_device->audio_output_mode;
 	ESP_LOGI(TAG, "audio_output_mode %d\nOne of I2S=0, I2S_MERUS, DAC_BUILT_IN, PDM, VS1053, SPDIF",audio_output_mode);
 	renderer_init(create_renderer_config());
-	//renderer_play_startup_tone();
+	//renderer_play_startup_tone(); //Removed it
 
 	//uart speed
 	uspeed = g_device->uartspeed;	

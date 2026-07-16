@@ -97,10 +97,22 @@ bool ntp_get_time(struct tm **dt) {
 	}	
 			
 	//extract time
-	ntp = (ntp_t*)msg;	
-	timestamp = ntp->trans_time[0] << 24 | ntp->trans_time[1] << 16 |ntp->trans_time[2] << 8 | ntp->trans_time[3];
+	ntp = (ntp_t*)msg;
+	// NTP's 32-bit seconds-since-1900 field has had its top bit set ever
+	// since 1968 (it doesn't roll over until 2036). Shifting a uint8_t into
+	// bit 31 of a plain (signed) int is signed-overflow UB and, in practice
+	// on this toolchain, produces a negative value that sign-extends into
+	// time_t and comes out ~80 years too early once the 1900->1970 offset
+	// is subtracted - hence dates showing up in 1890 instead of "now".
+	// Do the whole thing in uint32_t so it's well-defined and stays correct
+	// until the NTP era rolls over in 2036.
+	uint32_t seconds1900 = ((uint32_t)ntp->trans_time[0] << 24) | ((uint32_t)ntp->trans_time[1] << 16) |
+		((uint32_t)ntp->trans_time[2] << 8) | (uint32_t)ntp->trans_time[3];
 	// convert to unix time
-	timestamp -= 2208988800UL;
+	timestamp = (time_t)(seconds1900 - 2208988800UL);
+	printf("NTP raw bytes: %02x %02x %02x %02x, seconds1900=%lu, timestamp=%ld\n",
+		ntp->trans_time[0], ntp->trans_time[1], ntp->trans_time[2], ntp->trans_time[3],
+		(unsigned long)seconds1900, (long)timestamp);
 	// create tm struct
 	*dt = gmtime(&timestamp);
 	free(msg);
