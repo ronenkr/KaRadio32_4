@@ -49,5 +49,6 @@ Temporary Items
 # do not save build directory
 build-ttgo-t-display-s3/
 /build
+doom/build/
 managed_components/
 sdkconfig.old

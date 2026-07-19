@@ -1,0 +1,30 @@
+dependencies:
+  hagl:
+    component_hash: cfc234eec2f31f2ba36bb87532c58422dfbe6ce2ad3d3680a43c8f0d0780046e
+    dependencies: []
+    source:
+      git: https://github.com/tuupola/hagl.git
+      path: .
+      type: git
+    version: 1e00e2939291391a3982376afa05ed9fcbce2b78
+  idf:
+    source:
+      type: idf
+    version: 5.4.2
+  joltwallet/littlefs:
+    component_hash: fab83a8a57de01b05441557d78e9d10c755413a1836af4b2762b539add0c14b1
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.22.2
+direct_dependencies:
+- hagl
+- idf
+- joltwallet/littlefs
+manifest_hash: 4aa425bab31954748405494ebfb6bae4257fae72398cfafba3b477e03a05deb8
+target: esp32s3
+version: 2.0.0

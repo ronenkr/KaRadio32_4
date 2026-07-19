@@ -21,6 +21,7 @@
 #include "webclient.h"
 #include "webserver.h"
 #include "interface.h"
+#include "ota.h"
 
 #include "addon.h"
 #include "custom.h"
@@ -157,7 +158,8 @@ static void bootButtonTask(void *pvParams)
 			if (!longPressFired && (heldMs >= BOOT_BUTTON_HOLD_MS))
 			{
 				longPressFired = true;
-				printf("Boot button (GPIO0) LONG PRESS\n");
+				printf("Boot button (GPIO0) LONG PRESS - launching second app\n");
+				launch_second_app(); // does not return if ota_1 is valid
 			}
 		}
 		vTaskDelay(pdMS_TO_TICKS(BOOT_BUTTON_POLL_MS));

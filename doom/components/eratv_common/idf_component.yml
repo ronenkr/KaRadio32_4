@@ -1,0 +1,8 @@
+dependencies:
+  joltwallet/littlefs:
+    version: "*"
+  hagl:
+    version: "*"
+    git: https://github.com/tuupola/hagl.git
+  idf:
+    version: ">=5.0.0"
