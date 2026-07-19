@@ -108,8 +108,11 @@ private:
     static constexpr gpio_num_t kPinWs  = GPIO_NUM_18;
     static constexpr gpio_num_t kPinData = GPIO_NUM_17;
 
-    // 0..10 -> percent gain. Roughly matches the original's step feel.
-    static constexpr uint8_t kVolumePercent[11] = {0, 15, 25, 35, 45, 55, 65, 75, 85, 92, 100};
+    // 0..10 -> percent gain. Roughly matches the original's step feel, with
+    // the whole scale (every step, including the 100% ceiling) trimmed down
+    // by a uniform -2dB (linear factor 10^(-2/20) = 0.7943) - baked into the
+    // table directly rather than an extra runtime multiply/divide per sample.
+    static constexpr uint8_t kVolumePercent[11] = {0, 8, 12, 20, 30, 40, 52, 60, 68, 73, 79};
 
     int16_t applyGain(int16_t sample) const
     {
