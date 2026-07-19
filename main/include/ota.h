@@ -4,4 +4,5 @@
 #ifndef OTA_H
 #define OTA_H
 void update_firmware(char* fname);
+void launch_second_app(void);
 #endif

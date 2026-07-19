@@ -162,6 +162,7 @@ sys.erase		: erase all recorded configuration and stations. Dangerous command.
 sys.heap		: show the ram heap size
 sys.update		: start an OTA (On The Air) update of the software
 sys.prerelease	: start an OTA of the prerelease for test purpose.
+sys.launchapp	: reboot into the secondary application flashed in the ota_1 partition.
 sys.boot		: reboot the webradio.
 sys.patch("x")	: Change the status of the vs1053 patch at power on. 
 				  0 = Patch will not be loaded, 1 or up = Patch will be loaded (default) at power On

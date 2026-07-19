@@ -115,13 +115,22 @@ IDF_TARGET=esp32s3 idf.py -B build-ttgo-t-display-s3 \
 IDF_TARGET=esp32s3 idf.py -B build-ttgo-t-display-s3 -p PORT flash
 ```
 
+The 16 MB partition table reserves 2 MB for KaRadio itself (`ota_0`), 4 MB for an optional
+separate, independently-built application launchable from KaRadio via `sys.launchapp`
+(`ota_1`), and dedicates the remaining ~9.8 MB to a `littlefs` partition for that second app's
+own data. This reshuffles the offsets of the `device`/`stations`/`device1`/`hardware`
+partitions relative to earlier releases — a board already flashed with an older T-Display S3
+partition table needs a full `esptool.py erase_flash` before adopting this table, since none of
+its saved station list, device settings, or board GPIO config carries forward automatically to
+the new offsets.
+
 After flashing the firmware and its partition table, create and flash the board configuration at its S3-specific hardware-NVS offset:
 
 ```bash
 cd boards
-NVS_FLASH_OFFSET=0xc22000 ESPTOOL_CHIP=esp32s3 \
+NVS_FLASH_OFFSET=0x622000 ESPTOOL_CHIP=esp32s3 \
   bash ./nvs_partition_generator.sh ttgo_tdisplay_s3.csv
-esptool.py --chip esp32s3 --port PORT write_flash 0xc22000 \
+esptool.py --chip esp32s3 --port PORT write_flash 0x622000 \
   build/ttgo_tdisplay_s3.bin
 ```
 

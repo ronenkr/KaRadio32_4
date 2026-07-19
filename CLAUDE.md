@@ -59,7 +59,7 @@ Do not hand-edit the generated array files in `webpage/` (`style`, `style1`, `sc
 
 Per-board GPIO/option layouts live as CSV files in `boards/` and are compiled into an NVS binary
 that gets flashed once to the `hardware` partition (offset `0x3e2000` on the default 4 MB table,
-`0xc22000` on the T-Display S3's 16 MB table):
+`0x622000` on the T-Display S3's 16 MB table):
 
 ```bash
 cd boards
@@ -123,15 +123,23 @@ resistive touch input for touch-capable panels.
 `eeprom.c` reads/writes device settings, the station list, and the hardware-config partition via
 NVS (`nvs_flash`), exposing them as the global `g_device` struct plus a separate stations store.
 `main/CMakeLists.txt`'s `standard_adb.csv`-equivalent defaults are the fallback when no `hardware`
-NVS partition has been flashed. `ota.c` handles OTA image updates (`sys.update`/`sys.prerelease`).
+NVS partition has been flashed. `ota.c` handles OTA image updates (`sys.update`/`sys.prerelease`,
+pinned to the `ota_0` slot) and booting into the secondary application (`sys.launchapp`, see below).
 
 ### Partition layout
 
 The default 4 MB table (`partitions.csv`) has dual OTA app slots plus dedicated `device`,
 `stations`, `device1`, and `hardware` NVS partitions — see [HardwareConfig.md](HardwareConfig.md)
-for exact offsets. The T-Display S3 uses its own 16 MB table
-(`partitions.ttgo_tdisplay_s3.csv`) with the `hardware` partition at a different offset
-(`0xc22000`); don't assume the default offsets apply there.
+for exact offsets.
+
+The T-Display S3 uses its own 16 MB table (`partitions.ttgo_tdisplay_s3.csv`) with a different
+layout: `ota_0` (2 MB) always holds KaRadio itself — `ota.c` pins OTA updates there explicitly
+rather than picking "whichever OTA slot isn't running" — and `ota_1` (4 MB) holds a separate,
+independently-built application that KaRadio can boot into via `sys.launchapp`
+(`esp_ota_set_boot_partition()` + reboot; returning to KaRadio is that other app's own
+responsibility). The remaining ~9.8 MB is a `littlefs`-formatted data partition reserved for that
+second app's assets — KaRadio itself doesn't mount or use it. The `hardware` partition lives at
+`0x622000` here, not `0xc22000`; don't assume the default table's offsets apply on this board.
 
 ## Repo layout notes
 

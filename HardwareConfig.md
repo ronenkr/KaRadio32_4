@@ -33,7 +33,7 @@ device1,66,0,0x3e1000,4K,
 hardware,data,nvs,0x3e2000,12K,
 ```
 
-The generated hardware configuration binary must be flashed at `0x3e2000`. The dedicated 16 MB T-Display S3 table instead places `hardware` at `0xc22000`; do not flash that board's configuration at the default offset.
+The generated hardware configuration binary must be flashed at `0x3e2000`. The dedicated 16 MB T-Display S3 table instead places `hardware` at `0x622000`; do not flash that board's configuration at the default offset.
 
 Rename the pattern.csv file with the name of your c
 ard, for example lolin32.csv  
@@ -352,12 +352,12 @@ With ESP DOWNLOAD TOOL
 
 or an `esptool.py` command at address `0x3e2000` for the default table.
 
-For the standard LilyGO TTGO T-Display S3, first build and flash the ESP32-S3 firmware with its custom partition table. Then run this from `boards` and flash the generated binary at `0xc22000`:
+For the standard LilyGO TTGO T-Display S3, first build and flash the ESP32-S3 firmware with its custom partition table. Then run this from `boards` and flash the generated binary at `0x622000`:
 
 ```bash
-NVS_FLASH_OFFSET=0xc22000 ESPTOOL_CHIP=esp32s3 \
+NVS_FLASH_OFFSET=0x622000 ESPTOOL_CHIP=esp32s3 \
   bash ./nvs_partition_generator.sh ttgo_tdisplay_s3.csv
-esptool.py --chip esp32s3 --port PORT write_flash 0xc22000 \
+esptool.py --chip esp32s3 --port PORT write_flash 0x622000 \
   build/ttgo_tdisplay_s3.bin
 ```
 

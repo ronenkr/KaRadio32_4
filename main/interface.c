@@ -112,6 +112,7 @@ sys.erase: erase all recorded configuration and stations.\n\
 sys.heap: show the ram heap size\n\
 sys.update: start an OTA (On The Air) update of the software\n\
 sys.prerelease: start an OTA of the next release in alpha stage\n\
+sys.launchapp: reboot into the secondary application flashed in the ota_1 partition\n\
 sys.boot: reboot.\n\
 sys.patch and sys.patch(\"x\"): Display and Change the status of the vs1053 patch at power on.\n\
  0 = Patch will not be loaded, 1 or up = Patch will be loaded (default) at power On \n\
@@ -1527,8 +1528,9 @@ void checkCommand(int size, char* s)
 #else
 		else if(strcmp(tmp+4, "update") == 0) 	update_firmware((char*)"KaRadio32");
 		else if(strcmp(tmp+4, "prerelease") == 0) 	update_firmware((char*)"KaRadio32prv");
-#endif	
-		
+#endif
+		else if(strcmp(tmp+4, "launchapp") == 0) 	launch_second_app();
+
 		else if(startsWith (  "patch",tmp+4)) 	syspatch(tmp);
 		else if(startsWith (  "ledg",tmp+4)) 	sysledgpio(tmp); //ledgpio
 		else if(startsWith (  "ledpol",tmp+4)) 	sysledpol(tmp);

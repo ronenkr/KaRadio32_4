@@ -56,7 +56,31 @@ static int binary_file_length = 0;
 static bool taskState = false;
 
 static unsigned int  reclen = 0;
-	
+
+// Boots into the secondary application flashed in the ota_1 partition
+// (a separate, independently-built firmware, not an OTA mirror of KaRadio -
+// see partitions.ttgo_tdisplay_s3.csv). Getting back to KaRadio afterward is
+// that app's own responsibility (it would set the boot partition back to
+// ota_0 the same way and reboot).
+void launch_second_app(void)
+{
+	const esp_partition_t *app2 = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+		ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+	if (app2 == NULL)
+	{
+		ESP_LOGE(TAG, "launch_second_app: ota_1 partition not found");
+		return;
+	}
+	esp_err_t err = esp_ota_set_boot_partition(app2);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "launch_second_app: esp_ota_set_boot_partition failed, error=%d", err);
+		return;
+	}
+	ESP_LOGI(TAG, "launch_second_app: rebooting into ota_1");
+	esp_restart();
+}
+
 
 /******************************************************************************
  * FunctionName : wsUpgrade
@@ -205,10 +229,17 @@ static void ota_task(void *pvParameter)
         ESP_LOGI(TAG, "Send GET request to server succeeded");
     }
 
-	update_partition = esp_ota_get_next_update_partition(NULL);
+	// Pinned to KaRadio's own ota_0 slot rather than
+	// esp_ota_get_next_update_partition(NULL) ("whichever OTA slot isn't
+	// currently running"): ota_1 now holds a completely different, separately
+	// launched application (see sys.launchapp), not a mirror of this image -
+	// picking "next available" would silently overwrite it during a normal
+	// firmware update.
+	update_partition = esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+		ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+    assert(update_partition != NULL);
     ESP_LOGI(TAG, "Writing to partition subtype %d at offset 0x%x",
              update_partition->subtype, update_partition->address);
-    assert(update_partition != NULL);
     err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN, &update_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin failed, error=%d", err);
