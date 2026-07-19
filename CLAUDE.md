@@ -59,7 +59,7 @@ Do not hand-edit the generated array files in `webpage/` (`style`, `style1`, `sc
 
 Per-board GPIO/option layouts live as CSV files in `boards/` and are compiled into an NVS binary
 that gets flashed once to the `hardware` partition (offset `0x3e2000` on the default 4 MB table,
-`0x622000` on the T-Display S3's 16 MB table):
+`0x422000` on the T-Display S3's 16 MB table):
 
 ```bash
 cd boards
@@ -134,12 +134,12 @@ for exact offsets.
 
 The T-Display S3 uses its own 16 MB table (`partitions.ttgo_tdisplay_s3.csv`) with a different
 layout: `ota_0` (2 MB) always holds KaRadio itself — `ota.c` pins OTA updates there explicitly
-rather than picking "whichever OTA slot isn't running" — and `ota_1` (4 MB) holds a separate,
+rather than picking "whichever OTA slot isn't running" — and `ota_1` (2 MB) holds a separate,
 independently-built application that KaRadio can boot into via `sys.launchapp`
 (`esp_ota_set_boot_partition()` + reboot; returning to KaRadio is that other app's own
-responsibility). The remaining ~9.8 MB is a `littlefs`-formatted data partition reserved for that
+responsibility). The remaining ~11.8 MB is a `littlefs`-formatted data partition reserved for that
 second app's assets — KaRadio itself doesn't mount or use it. The `hardware` partition lives at
-`0x622000` here, not `0xc22000`; don't assume the default table's offsets apply on this board.
+`0x422000` here, not `0xc22000`; don't assume the default table's offsets apply on this board.
 
 ## Repo layout notes
 

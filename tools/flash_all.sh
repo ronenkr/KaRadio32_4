@@ -28,7 +28,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Must match partitions.ttgo_tdisplay_s3.csv.
 OTA1_OFFSET=0x210000
-HARDWARE_OFFSET=0x622000
+HARDWARE_OFFSET=0x422000
 
 doom_bin="${REPO_ROOT}/doom/build/eratv_doom.bin"
 if [ ! -f "${doom_bin}" ]; then

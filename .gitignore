@@ -52,3 +52,7 @@ build-ttgo-t-display-s3/
 doom/build/
 managed_components/
 sdkconfig.old
+
+# WAD files are large binary game data, not source - flash separately via
+# tools/flash_wads.sh instead of committing them.
+doom/wads/

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds both apps that share the T-Display S3's partition table
 # (partitions.ttgo_tdisplay_s3.csv): KaRadio32_4 itself (ota_0, 2MB) and the
-# Doom port in doom/ (ota_1, 4MB). Reports both binary sizes against their
+# Doom port in doom/ (ota_1, 2MB). Reports both binary sizes against their
 # partition budgets so an overflow is obvious here rather than at flash time.
 #
 # Usage: tools/build_all.sh
@@ -25,7 +25,7 @@ echo "== Building KaRadio32_4 (ota_0, 2MB budget) =="
 )
 
 echo
-echo "== Building doom (ota_1, 4MB budget) =="
+echo "== Building doom (ota_1, 2MB budget) =="
 (
     cd "${REPO_ROOT}/doom"
     IDF_TARGET=esp32s3 idf.py -B build -DSDKCONFIG=build/sdkconfig build
@@ -37,9 +37,9 @@ doom_bin="${REPO_ROOT}/doom/build/eratv_doom.bin"
 karadio_size=$(stat -c%s "${karadio_bin}")
 doom_size=$(stat -c%s "${doom_bin}")
 
-# Must match partitions.ttgo_tdisplay_s3.csv - ota_0=0x200000, ota_1=0x400000.
+# Must match partitions.ttgo_tdisplay_s3.csv - ota_0=0x200000, ota_1=0x200000.
 ota0_budget=$((0x200000))
-ota1_budget=$((0x400000))
+ota1_budget=$((0x200000))
 
 echo
 echo "== Size summary =="

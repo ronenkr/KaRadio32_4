@@ -26,8 +26,8 @@ if [ ! -d "${WAD_DIR}" ]; then
 fi
 
 # Must match partitions.ttgo_tdisplay_s3.csv's littlefs entry.
-LITTLEFS_OFFSET=0x625000
-LITTLEFS_SIZE=$((0x9DB000))
+LITTLEFS_OFFSET=0x425000
+LITTLEFS_SIZE=$((0xBDB000))
 NAME_MAX=255
 BLOCK_SIZE=4096
 
