@@ -1584,6 +1584,11 @@ static void M_SfxVol(int choice)
     snd_SfxVolume--;
 
   S_SetSfxVolume(snd_SfxVolume);
+  lprintf(LO_CONFIRM, "M_SfxVol: sfx_volume = %d\n", snd_SfxVolume);
+  // Save on every step, not just on leaving the menu (see the key_backspace/
+  // key_escape hook further down) - a hard reset/power cycle while still in
+  // this menu, before backing out, would otherwise lose the change entirely.
+  M_SaveDefaults();
 }
 
 static void M_MusicVol(int choice)
@@ -1594,6 +1599,8 @@ static void M_MusicVol(int choice)
     snd_MusicVolume--;
 
   S_SetMusicVolume(snd_MusicVolume);
+  lprintf(LO_CONFIRM, "M_MusicVol: music_volume = %d\n", snd_MusicVolume);
+  M_SaveDefaults(); // see the matching comment in M_SfxVol
 }
 
 static void M_QuickSaveResponse(int ch)
@@ -2182,6 +2189,11 @@ bool M_Responder(event_t* ev)
   }
   else if (ch == key_escape)
   {
+    // Persist snd_SfxVolume/snd_MusicVolume as soon as the Sound Volume menu
+    // is left, rather than only at full app exit (I_SafeExit already calls
+    // M_SaveDefaults() too, but that's not reached if the device loses power
+    // or resets before the player quits Doom).
+    if (currentMenu == &SoundDef) M_SaveDefaults();
     currentMenu->lastOn = itemOn;
     M_ClearMenus();
     S_StartSound(NULL,sfx_swtchx);
@@ -2189,6 +2201,7 @@ bool M_Responder(event_t* ev)
   }
   else if (ch == key_backspace)
   {
+    if (currentMenu == &SoundDef) M_SaveDefaults();
     currentMenu->lastOn = itemOn;
     if (currentMenu->prevMenu)
     {

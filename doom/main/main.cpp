@@ -27,6 +27,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cwchar>
+#include <cinttypes>
 #include <algorithm>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -62,6 +63,7 @@
 // into KaRadio cleanly.
 static void return_to_karadio(void)
 {
+    ESP_LOGI("Doom_App", "return_to_karadio: called");
     const esp_partition_t *karadio = esp_partition_find_first(
         ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
     if (karadio == NULL) {
@@ -73,6 +75,8 @@ static void return_to_karadio(void)
         ESP_LOGE("Doom_App", "return_to_karadio: esp_ota_set_boot_partition failed, error=%d", err);
         return;
     }
+    ESP_LOGI("Doom_App", "return_to_karadio: boot partition set to %s at 0x%06" PRIx32 ", restarting",
+             karadio->label, karadio->address);
     esp_restart();
 }
 
@@ -88,6 +92,7 @@ extern "C" {
 #include "i_sound.h"
 #include "i_main.h"
 #include "m_argv.h"
+#include "m_misc.h"
 #include "r_fps.h"
 #include "s_sound.h"
 #include "st_stuff.h"
@@ -168,17 +173,49 @@ static constexpr int kDisplayHeight = DISPLAY_HEIGHT;  // 170
 static constexpr uint8_t kMenuTextScale = 2;
 
 enum class MenuItem : uint8_t {
-    Resume = 0,
-    Volume,
-    Mute,
-    ReturnToTv,
+    ReturnToRadio = 0,
     Count,
 };
 
 struct OsdState {
     bool menuVisible = false;
-    MenuItem menuSelection = MenuItem::Resume;
+    MenuItem menuSelection = MenuItem::ReturnToRadio;
 } g_osd;
+
+// ── OSD settings persistence ─────────────────────────────────────────────────
+// Volume/mute (audioPlayer's software PCM gain, not Doom's own snd_SfxVolume/
+// snd_MusicVolume mixers, which persist through PrBoom's own M_SaveDefaults()/
+// M_LoadDefaults()) are no longer user-adjustable from the OSD menu (see
+// MenuItem), but still applied to actual playback - restore whatever was
+// last saved, if anything was.
+
+static constexpr const char *kSettingsPath = "/littlefs/doom_settings.bin";
+static constexpr uint32_t kSettingsMagic = 0x444F4D31; // "DOM1"
+
+struct DoomSettings {
+    uint32_t magic;
+    uint8_t volume;
+    uint8_t muted;
+};
+
+static void loadSettings()
+{
+    FILE *f = fopen(kSettingsPath, "rb");
+    if (!f) {
+        ESP_LOGI(TAG, "No saved settings at %s, using defaults", kSettingsPath);
+        return;
+    }
+    DoomSettings s = {};
+    size_t n = fread(&s, sizeof(s), 1, f);
+    fclose(f);
+    if (n != 1 || s.magic != kSettingsMagic) {
+        ESP_LOGW(TAG, "Settings file at %s missing/corrupt, using defaults", kSettingsPath);
+        return;
+    }
+    audioPlayer.setVolume(s.volume);
+    audioPlayer.setMute(s.muted != 0);
+    ESP_LOGI(TAG, "Loaded settings: volume=%u muted=%d", s.volume, s.muted != 0);
+}
 
 // ── Sound mixing state ───────────────────────────────────────────────────────
 
@@ -217,6 +254,7 @@ static const struct { Btn button; int *key; } keymap[] = {
     {Btn::DPAD_LEFT,  &key_left},
     {Btn::DPAD_RIGHT, &key_right},
     {Btn::BTN_A,      &key_fire},
+    {Btn::BTN_A,      &key_backspace},    // back one level in Doom's own menu
     {Btn::BTN_B,      &key_use},
     {Btn::BTN_B,      &key_enter},        // confirm in menus
     {Btn::BTN_X,      &key_speed},        // run
@@ -308,23 +346,28 @@ static void setMenuVisible(bool visible)
 {
     if (g_osd.menuVisible == visible) return;
     g_osd.menuVisible = visible;
-    if (visible) g_osd.menuSelection = MenuItem::Resume;
+    if (visible) g_osd.menuSelection = MenuItem::ReturnToRadio;
+    ESP_LOGI(TAG, "OSD menu %s", visible ? "opened" : "closed");
 }
 
-static void adjustVolume(int delta)
+static const char *menuItemName(MenuItem item)
 {
-    if (delta > 0) { for (int i = 0; i < delta; ++i)  audioPlayer.increaseVolume(); }
-    else           { for (int i = delta; i < 0; ++i)  audioPlayer.decreaseVolume(); }
+    switch (item) {
+    case MenuItem::ReturnToRadio: return "ReturnToRadio";
+    case MenuItem::Count:         return "Count";
+    }
+    return "?";
 }
 
 static void activateMenuSelection()
 {
+    ESP_LOGI(TAG, "OSD menu select: %s", menuItemName(g_osd.menuSelection));
     switch (g_osd.menuSelection) {
-    case MenuItem::Resume:     setMenuVisible(false); break;
-    case MenuItem::Volume:     adjustVolume(1); break;
-    case MenuItem::Mute:       audioPlayer.setMute(!audioPlayer.isMuted()); break;
-    case MenuItem::ReturnToTv: I_SafeExit(0); break;
-    case MenuItem::Count:      break;
+    case MenuItem::ReturnToRadio:
+        ESP_LOGI(TAG, "ReturnToRadio selected, calling I_SafeExit");
+        I_SafeExit(0);
+        break;
+    case MenuItem::Count: break;
     }
 }
 
@@ -342,7 +385,7 @@ static void renderMenuOverlay(hagl_backend_t *backend)
     static constexpr int panelX     = 16;
     static constexpr int panelY     = 18;
     static constexpr int panelW     = 252;
-    static constexpr int panelH     = 204;
+    static constexpr int panelH     = 100;
     static constexpr int itemX      = panelX + 12;
     static constexpr int itemW      = panelW - 24;
     static constexpr int titleY     = panelY + 12;
@@ -367,14 +410,8 @@ static void renderMenuOverlay(hagl_backend_t *backend)
         }
         wchar_t buf[48] = {};
         switch (item) {
-        case MenuItem::Resume:
-            std::swprintf(buf, 48, L"Resume"); break;
-        case MenuItem::Volume:
-            std::swprintf(buf, 48, L"Volume: %u/10", audioPlayer.getVolume()); break;
-        case MenuItem::Mute:
-            std::swprintf(buf, 48, L"%ls", audioPlayer.isMuted() ? L"Unmute" : L"Mute"); break;
-        case MenuItem::ReturnToTv:
-            std::swprintf(buf, 48, L"Return To TV"); break;
+        case MenuItem::ReturnToRadio:
+            std::swprintf(buf, 48, L"Return to Radio"); break;
         case MenuItem::Count:
             break;
         }
@@ -477,8 +514,11 @@ void I_Init(void)
 {
     snd_channels = NUM_MIX_CHANNELS;
     snd_samplerate = AUDIO_SAMPLE_RATE;
-    snd_MusicVolume = 12;
-    snd_SfxVolume = 12;
+    // snd_MusicVolume/snd_SfxVolume are NOT set here: M_LoadDefaults() (called
+    // earlier in D_DoomMain, before I_Init()) already restored them from
+    // littlefs/prboom.cfg - or left them at the defaults[] table's default of
+    // 8 if there's no saved config yet. Hardcoding them here would silently
+    // overwrite whatever was just loaded on every single boot.
     usegamma = 0;
     realtic_clock_rate = 100;
 }
@@ -486,6 +526,17 @@ void I_Init(void)
 void I_SafeExit(int rc)
 {
     (void)rc;
+    ESP_LOGI(TAG, "I_SafeExit(%d) called, mainTaskHandle=%p", rc, (void *)g_mainTaskHandle);
+
+    // Persist Doom's own engine-level settings (key bindings, detail level,
+    // in-engine sound mixer levels, etc. - anything reachable through the
+    // engine's own Options menu) to littlefs/prboom.cfg. M_LoadDefaults() is
+    // already called at startup (d_main.c); this is the missing write side -
+    // the vendored engine never calls M_SaveDefaults() on its own. Our own
+    // OSD volume/mute (outside the engine, see saveSettings() above) is saved
+    // separately, on every change rather than only at exit.
+    M_SaveDefaults();
+
     audioPlayer.setMute(true);
 
     // We have decided to leave Doom, so we no longer need this task. Rather than
@@ -519,14 +570,20 @@ void I_StartTic(void)
     uint32_t joystick = normalizeDpadMask(raw);
 
     // Emergency exit: Plus + Minus held together returns to the launcher.
-    if (isPressed(raw, Btn::BTN_PLUS) && isPressed(raw, Btn::BTN_MINUS)) {
+    // L2, Plus, and Minus all decode from adjacent bits of the same raw HID
+    // byte (see androidBitButton() in BluetoothJoystick.hpp: bit0=L2, bit1=R2,
+    // bit2=Minus, bit3=Plus). On some controllers a single L2 press (e.g. an
+    // analog trigger, or a report that sets several of those bits at once)
+    // makes Plus+Minus read as pressed too, firing this combo instead of
+    // opening the OSD menu - excluding L2 here prevents that misfire without
+    // weakening the genuine Plus+Minus shortcut.
+    if (isPressed(raw, Btn::BTN_PLUS) && isPressed(raw, Btn::BTN_MINUS) && !isPressed(raw, Btn::BTN_L2)) {
         I_SafeExit(0);
         return;
     }
 
-    // Rising edges (newly pressed this tic), both raw and dpad-normalized.
-    const uint32_t rawPressed  = raw & ~prev_raw;
-    const uint32_t normPressed = joystick & ~normalizeDpadMask(prev_raw);
+    // Rising edges (newly pressed this tic).
+    const uint32_t rawPressed = raw & ~prev_raw;
 
     // ── EraTV overlay menu (opened with L2) ──────────────────────────────────
     bool openedThisFrame = false;
@@ -549,18 +606,7 @@ void I_StartTic(void)
     }
 
     if (g_osd.menuVisible) {
-        if (isPressed(normPressed, Btn::DPAD_UP) &&
-            g_osd.menuSelection != MenuItem::Resume) {
-            g_osd.menuSelection = static_cast<MenuItem>(static_cast<int>(g_osd.menuSelection) - 1);
-        }
-        if (isPressed(normPressed, Btn::DPAD_DOWN) &&
-            g_osd.menuSelection != static_cast<MenuItem>(static_cast<int>(MenuItem::Count) - 1)) {
-            g_osd.menuSelection = static_cast<MenuItem>(static_cast<int>(g_osd.menuSelection) + 1);
-        }
-        if (g_osd.menuSelection == MenuItem::Volume) {
-            if (isPressed(normPressed, Btn::DPAD_RIGHT)) adjustVolume(1);
-            if (isPressed(normPressed, Btn::DPAD_LEFT))  adjustVolume(-1);
-        }
+        // Only one item (ReturnToRadio) - no up/down navigation needed.
         if (isPressed(rawPressed, Btn::BTN_A)) {
             activateMenuSelection();
         }
@@ -1043,9 +1089,11 @@ extern "C" void app_main()
     hagl_flush(fb.getBuffer());
 
     fs.begin();
+    fs.print_sdcard_recursive(EraTV::kLittleFsMountPoint);
 
     audioPlayer.begin();
     audioPlayer.configurePcmOutput(AUDIO_SAMPLE_RATE);
+    loadSettings();
 
 #if CONFIG_BT_ENABLED
     if (!btJoystick.begin()) {

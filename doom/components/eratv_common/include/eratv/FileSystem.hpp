@@ -41,11 +41,22 @@ namespace EraTV
 
 		esp_err_t begin()
 		{
+			// grow_on_mount: the flashed image (tools/flash_wads.sh) is built just
+			// large enough to hold the WAD files, not the full littlefs partition
+			// - littlefs-python's own free-block accounting is broken for any
+			// image built with baked-in headroom (verified: even a few unused
+			// blocks over the minimum get reported, and treated, as fully
+			// allocated - ENOSPC on the very first write of a new file, e.g.
+			// prboom.cfg/doom_settings.bin, regardless of how much real free
+			// space exists). Growing here instead, through the real C littlefs
+			// library, produces correct free-block bookkeeping for the grown
+			// region.
 			esp_vfs_littlefs_conf_t conf = {
 				.base_path = kLittleFsMountPoint,
 				.partition_label = "littlefs",
 				.format_if_mount_failed = false,
 				.dont_mount = false,
+				.grow_on_mount = true,
 			};
 
 			esp_err_t ret = esp_vfs_littlefs_register(&conf);
@@ -140,11 +151,11 @@ namespace EraTV
 					if (S_ISDIR(st.st_mode))
 					{
 						ESP_LOGI(TAG, "DIR : %s", full_path.c_str());
-						list_sdcard_recursive(full_path);
+						print_sdcard_recursive(full_path);
 					}
 					else
 					{
-						ESP_LOGI(TAG, "FILE: %s", full_path.c_str());
+						ESP_LOGI(TAG, "FILE: %s  (%ld bytes)", full_path.c_str(), (long)st.st_size);
 					}
 				}
 			}

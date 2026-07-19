@@ -99,6 +99,10 @@ public:
     bool isMuted() const { return muted; }
     uint8_t getVolume() const { return volumeLevel; }
 
+    // For restoring a previously saved level directly (as opposed to the
+    // step-at-a-time increase/decreaseVolume() used by the OSD menu).
+    void setVolume(uint8_t level) { volumeLevel = (level > 10) ? 10 : level; }
+
 private:
     static constexpr gpio_num_t kPinBck = GPIO_NUM_21;
     static constexpr gpio_num_t kPinWs  = GPIO_NUM_18;

@@ -137,12 +137,6 @@ static hagl_color_t trampoline_get_pixel(void *self, int16_t x0, int16_t y0)
     return s_bitmap.get_pixel(&s_bitmap, x0, y0);
 }
 
-static hagl_color_t trampoline_color(void *self, uint8_t r, uint8_t g, uint8_t b)
-{
-    (void)self;
-    return s_bitmap.color(&s_bitmap, r, g, b);
-}
-
 static void trampoline_blit(void *self, int16_t x0, int16_t y0, hagl_bitmap_t *src)
 {
     (void)self;
@@ -301,7 +295,15 @@ void hagl_hal_init(hagl_backend_t *backend)
     backend->depth = DISPLAY_DEPTH;
     backend->put_pixel = trampoline_put_pixel;
     backend->get_pixel = trampoline_get_pixel;
-    backend->color = trampoline_color;
+    // backend->color intentionally left NULL: hagl_bitmap_init() (vendored,
+    // hagl_bitmap.c) never sets hagl_bitmap_t::color - it stays null, and a
+    // trampoline forwarding to it would call through that null pointer
+    // (confirmed crash: InstrFetchProhibited at PC=0, the first time
+    // anything exercised this path - renderMenuOverlay()'s uiColor(), never
+    // hit before since I_FinishUpdate's main render writes buffer directly
+    // and bypasses hagl's color/put_pixel/etc entirely). hagl_color() itself
+    // already falls back to rgb565(r,g,b) when surface->color is null, which
+    // is exactly the right RGB565 conversion for this panel.
     backend->blit = trampoline_blit;
     backend->scale_blit = trampoline_scale_blit;
     backend->hline = trampoline_hline;

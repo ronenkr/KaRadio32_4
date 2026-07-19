@@ -642,7 +642,10 @@ void M_SaveDefaults(void)
 {
   FILE *f = fopen(configfile, "w");
   if (!f)
-    return; // can't write the file, but don't complain
+  {
+    lprintf(LO_WARN, "M_SaveDefaults: failed to open %s for writing\n", configfile);
+    return;
+  }
 
   fprintf(f, "# Doom config file\n");
   fprintf(f, "# Format:\n");
@@ -660,12 +663,18 @@ void M_SaveDefaults(void)
         fprintf(f, "%-25s 0x%x\n", defaults[i].name, *(defaults[i].location.pi));
       else
         fprintf(f, "%-25s %5i\n", defaults[i].name, *(defaults[i].location.pi));
+
+      if (!strcmp(defaults[i].name, "sfx_volume") || !strcmp(defaults[i].name, "music_volume"))
+        lprintf(LO_CONFIRM, "M_SaveDefaults: saved %s = %d to %s\n",
+                defaults[i].name, *(defaults[i].location.pi), configfile);
     }
     else
     {
       fprintf(f, "%-25s \"%s\"\n", defaults[i].name, *(defaults[i].location.ppsz));
     }
   }
+  if (ferror(f))
+    lprintf(LO_ERROR, "M_SaveDefaults: write error on %s (disk full?)\n", configfile);
   fclose (f);
 }
 
@@ -716,12 +725,30 @@ void M_LoadDefaults(void)
   }
 
   lprintf(LO_CONFIRM, " reading config from: %s\n", configfile);
+
+  // Ground-truth dump of the raw file content, bypassing fscanf entirely,
+  // to rule out a stdio/scanf-layer issue vs. the file simply not containing
+  // what M_SaveDefaults() is believed to have written.
+  {
+    fseek(f, 0, SEEK_END);
+    long fsize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    lprintf(LO_CONFIRM, "M_LoadDefaults: %s is %ld bytes\n", configfile, fsize);
+    char raw[513];
+    size_t n = fread(raw, 1, sizeof(raw) - 1, f);
+    raw[n] = '\0';
+    lprintf(LO_CONFIRM, "M_LoadDefaults: raw content (%u bytes read):\n---\n%s\n---\n",
+            (unsigned)n, raw);
+    fseek(f, 0, SEEK_SET);
+  }
+
   while (!feof(f))
   {
     char def[80], strparm[100];
     int parm = 0;
-
-    if (fscanf (f, "%79s %[^\n]\n", def, strparm) != 2)
+    int scan_result = fscanf (f, "%79s %[^\n]\n", def, strparm);
+    lprintf(LO_CONFIRM, "M_LoadDefaults: fscanf returned %d\n", scan_result);
+    if (scan_result != 2)
       continue;
 
     if (!isalnum(def[0]))
@@ -738,6 +765,8 @@ void M_LoadDefaults(void)
       sscanf(strparm, "%i", &parm);
     }
 
+    lprintf(LO_CONFIRM, "M_LoadDefaults: parsed line def=\"%s\" strparm=\"%s\" parm=%d\n", def, strparm, parm);
+
     for (i = 0 ; i < numdefaults ; i++)
       if ((defaults[i].type != def_none) && !strcmp(def, defaults[i].name))
       {
@@ -750,7 +779,11 @@ void M_LoadDefaults(void)
         //jff 3/4/98 range check numeric parameters
         if ((defaults[i].minvalue==UL || defaults[i].minvalue<=parm) &&
             (defaults[i].maxvalue==UL || defaults[i].maxvalue>=parm))
+        {
           *(defaults[i].location.pi) = parm;
+          if (!strcmp(def, "sfx_volume") || !strcmp(def, "music_volume"))
+            lprintf(LO_CONFIRM, "M_LoadDefaults: loaded %s = %d\n", def, parm);
+        }
         }
         else
         {
