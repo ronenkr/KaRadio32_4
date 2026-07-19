@@ -53,6 +53,20 @@ typedef struct
   char name[8];
 } filelump_t;
 
+// ZWAD: a WAD variant that stores every lump as an independent zlib stream
+// instead of raw bytes, so only the lump the engine actually asks for gets
+// decompressed. "ZWAD" replaces "IWAD"/"PWAD" in the header, and the
+// directory entry is 20 bytes (not 16) to carry compressed_size - do not
+// read a ZWAD directory with filelump_t, the stride mismatch corrupts every
+// entry after the first. See ../zwad-compressed-wad-porting.md.
+typedef struct
+{
+  int  filepos;
+  int  size;              // uncompressed lump length
+  int  compressed_size;   // stored zlib stream length; 0 for a 0-byte lump
+  char name[8];
+} zwadfilelump_t;
+
 typedef enum {
   ns_global=0,
   ns_sprites,
@@ -67,6 +81,7 @@ typedef struct
   const void *data;
   size_t size;
   void *handle;
+  int is_zwad;            // nonzero if this file's header identifier was "ZWAD"
 } wadfile_info_t;
 
 typedef struct
@@ -75,8 +90,9 @@ typedef struct
   short  li_namespace:5;  // lump namespace
   short  locks:11;        // ptr locks
   short  index, next;     // Index in lumpinfo[]
-  size_t size;            // lump size
+  size_t size;            // lump size (always uncompressed)
   size_t position;        // position in wadfile
+  size_t compressed_size; // 0 for an ordinary lump; >0 => zlib inflate path
   wadfile_info_t *wadfile;// source file
   void *ptr;              // data/cache pointer
 } lumpinfo_t;
@@ -101,6 +117,12 @@ void    W_InitCache(void);
 void    W_DoneCache(void);
 const void* W_CacheLumpNum(int lump);
 void    W_UnlockLumpNum(int lump);
+
+// Size of the fixed decompression workspace ZWAD support holds onto (the
+// shared static input buffer in w_wad.c), or 0 if no loaded WAD is a ZWAD.
+// Not counted as part of any individual lump's memory - it's the same
+// buffer regardless of how many compressed lumps get read through it.
+size_t  W_CompressedBufferUsage(void);
 
 // CPhipps - convenience macros
 #define W_CheckNumForName(name) W_CheckNumForNameNs(name, ns_global)

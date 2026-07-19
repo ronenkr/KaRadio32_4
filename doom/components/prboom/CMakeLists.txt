@@ -3,7 +3,7 @@ file(GLOB PRBOOM_SOURCES "${CMAKE_CURRENT_LIST_DIR}/*.c")
 idf_component_register(
     SRCS ${PRBOOM_SOURCES}
     INCLUDE_DIRS "."
-    REQUIRES newlib
+    REQUIRES newlib tinfl
     LDFRAGMENTS "linker.lf"
 )
 

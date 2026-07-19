@@ -50,6 +50,7 @@ Temporary Items
 build-ttgo-t-display-s3/
 /build
 doom/build/
+doom/tools/build/
 managed_components/
 sdkconfig.old
 

@@ -590,6 +590,7 @@ static void CheckIWAD(wadfile_info_t *iwad,GameMode_t *gmode,boolean *hassec)
     int ud=0,rg=0,sw=0,cm=0,sc=0;
     wadinfo_t header = {0};
     FILE *fp = NULL;
+    boolean compressed_wad;
 
     if (!iwad)
       I_Error("CheckIWAD: Can't open NULL IWAD");
@@ -601,53 +602,82 @@ static void CheckIWAD(wadfile_info_t *iwad,GameMode_t *gmode,boolean *hassec)
     else
       I_Error("CheckIWAD: Can't open IWAD: %s", iwad->name);
 
-    // read IWAD header
-    if (!strncmp(header.identification, "IWAD", 4))
+    // ZWAD (see w_wad.h and ../zwad-compressed-wad-porting.md): its
+    // directory is zwadfilelump_t records (20 bytes), not filelump_t (16
+    // bytes). Reading it with the wrong stride misaligns every entry after
+    // the first, so MAPxx/ExMy names go undetected and gamemode detection
+    // silently falls through to the wrong game. No lump decompression is
+    // needed here - names are stored uncompressed in the directory.
+    compressed_wad = !strncmp(header.identification, "ZWAD", 4);
+
+    // read IWAD/ZWAD header
+    if (compressed_wad || !strncmp(header.identification, "IWAD", 4))
     {
       size_t length;
-      filelump_t *fileinfo;
+      filelump_t *fileinfo = NULL;
+      zwadfilelump_t *zfileinfo = NULL;
 
-      // read IWAD directory
+      // read directory
       header.numlumps = LONG(header.numlumps);
       header.infotableofs = LONG(header.infotableofs);
       length = header.numlumps;
-      fileinfo = calloc(sizeof(filelump_t), length);
 
-      if (iwad->data)
-        memcpy(fileinfo, iwad->data + header.infotableofs, sizeof(filelump_t) * length);
-      else if (fseek(fp, header.infotableofs, SEEK_SET) == 0)
-        fread(fileinfo, sizeof(filelump_t), length, fp);
+      if (compressed_wad)
+      {
+        zfileinfo = calloc(sizeof(zwadfilelump_t), length);
+
+        if (iwad->data)
+          memcpy(zfileinfo, iwad->data + header.infotableofs, sizeof(zwadfilelump_t) * length);
+        else if (fseek(fp, header.infotableofs, SEEK_SET) == 0)
+          fread(zfileinfo, sizeof(zwadfilelump_t), length, fp);
+        else
+          I_Error("CheckIWAD: Can't read IWAD: %s", iwad->name);
+      }
       else
-        I_Error("CheckIWAD: Can't read IWAD: %s", iwad->name);
+      {
+        fileinfo = calloc(sizeof(filelump_t), length);
+
+        if (iwad->data)
+          memcpy(fileinfo, iwad->data + header.infotableofs, sizeof(filelump_t) * length);
+        else if (fseek(fp, header.infotableofs, SEEK_SET) == 0)
+          fread(fileinfo, sizeof(filelump_t), length, fp);
+        else
+          I_Error("CheckIWAD: Can't read IWAD: %s", iwad->name);
+      }
 
       // scan directory for levelname lumps
       while (length--)
-        if (fileinfo[length].name[0] == 'E' &&
-            fileinfo[length].name[2] == 'M' &&
-            fileinfo[length].name[4] == 0)
+      {
+        const char *name = compressed_wad ? zfileinfo[length].name : fileinfo[length].name;
+
+        if (name[0] == 'E' &&
+            name[2] == 'M' &&
+            name[4] == 0)
         {
-          if (fileinfo[length].name[1] == '4')
+          if (name[1] == '4')
             ++ud;
-          else if (fileinfo[length].name[1] == '3')
+          else if (name[1] == '3')
             ++rg;
-          else if (fileinfo[length].name[1] == '2')
+          else if (name[1] == '2')
             ++rg;
-          else if (fileinfo[length].name[1] == '1')
+          else if (name[1] == '1')
             ++sw;
         }
-        else if (fileinfo[length].name[0] == 'M' &&
-                  fileinfo[length].name[1] == 'A' &&
-                  fileinfo[length].name[2] == 'P' &&
-                  fileinfo[length].name[5] == 0)
+        else if (name[0] == 'M' &&
+                  name[1] == 'A' &&
+                  name[2] == 'P' &&
+                  name[5] == 0)
         {
           ++cm;
-          if (fileinfo[length].name[3] == '3')
-            if (fileinfo[length].name[4] == '1' ||
-                fileinfo[length].name[4] == '2')
+          if (name[3] == '3')
+            if (name[4] == '1' ||
+                name[4] == '2')
               ++sc;
         }
+      }
 
       free(fileinfo);
+      free(zfileinfo);
     }
     else // missing IWAD tag in header
       I_Error("CheckIWAD: IWAD tag %s not present", iwad->name);
@@ -977,6 +1007,9 @@ static void D_DoomMainSetup(void)
 
   lprintf(LO_INFO, "W_Init: Init WADfiles.\n");
   W_Init(); // CPhipps - handling of wadfiles init changed
+  if (W_CompressedBufferUsage())
+    lprintf(LO_INFO, "W_Init: ZWAD active, %u byte decompression workspace\n",
+      (unsigned)W_CompressedBufferUsage());
 
   lprintf(LO_INFO, "V_Init: Setting up video.\n");
   V_Init(SCREENWIDTH, SCREENHEIGHT, default_videomode);

@@ -881,8 +881,15 @@ static bool isIwadFile(const char *path)
     char header[4] = {0};
     size_t got = fread(header, 1, sizeof(header), fp);
     fclose(fp);
-    return got >= 4 && header[0] == 'I' && header[1] == 'W'
-        && header[2] == 'A' && header[3] == 'D';
+    if (got < 4) {
+        return false;
+    }
+    // "ZWAD" is a compressed IWAD/PWAD (see
+    // ../zwad-compressed-wad-porting.md) - same directory-role as a plain
+    // IWAD from this scan's point of view, W_AddFile()/CheckIWAD() in
+    // components/prboom tell them apart from here on.
+    return (header[0] == 'I' && header[1] == 'W' && header[2] == 'A' && header[3] == 'D')
+        || (header[0] == 'Z' && header[1] == 'W' && header[2] == 'A' && header[3] == 'D');
 }
 
 static bool hasWadExtension(const char *name)
@@ -891,7 +898,7 @@ static bool hasWadExtension(const char *name)
         return false;
     }
     const char *dot = strrchr(name, '.');
-    return dot && strcasecmp(dot, ".wad") == 0;
+    return dot && (strcasecmp(dot, ".wad") == 0 || strcasecmp(dot, ".zwad") == 0);
 }
 
 // Scan a directory for the first IWAD (preferred) or any .wad as a fallback.
@@ -940,6 +947,147 @@ static void dirOf(const char *path, char *out, size_t outSize)
     }
 }
 
+// ── Startup WAD selection ────────────────────────────────────────────────────
+// If littlefs holds more than one IWAD (e.g. both a compressed Doom and Doom
+// II - see ../zwad-compressed-wad-porting.md), findIwadInDir() alone would
+// silently boot whichever one readdir() happens to return first and leave
+// the other unreachable. Scan for all of them and, when there's a choice to
+// make, ask before starting the engine.
+
+static constexpr int kMaxWadCandidates = 6;
+
+struct WadCandidate {
+    char path[320];
+    char label[64]; // filename only, for display
+};
+
+// Like findIwadInDir(), but collects every IWAD/ZWAD it finds (up to
+// kMaxWadCandidates) instead of stopping at the first one. PWAD-only files
+// are skipped here - they need a companion IWAD and aren't a bootable
+// choice on their own, so they'd make confusing entries in a "pick a game"
+// list.
+static int listIwadsInDir(const char *dir, WadCandidate *out, int maxCount)
+{
+    DIR *d = opendir(dir);
+    if (!d) {
+        return 0;
+    }
+
+    int count = 0;
+    int skipped = 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != nullptr) {
+        if (ent->d_type != DT_REG || !hasWadExtension(ent->d_name)) {
+            continue;
+        }
+        char full[320];
+        snprintf(full, sizeof(full), "%s/%s", dir, ent->d_name);
+        if (!isIwadFile(full)) {
+            continue;
+        }
+        if (count >= maxCount) {
+            skipped++;
+            continue;
+        }
+        strncpy(out[count].path, full, sizeof(out[count].path) - 1);
+        out[count].path[sizeof(out[count].path) - 1] = '\0';
+        strncpy(out[count].label, ent->d_name, sizeof(out[count].label) - 1);
+        out[count].label[sizeof(out[count].label) - 1] = '\0';
+        count++;
+    }
+    closedir(d);
+
+    if (skipped > 0) {
+        ESP_LOGW(TAG, "listIwadsInDir: %s has more than %d IWADs, %d not shown",
+                 dir, maxCount, skipped);
+    }
+    return count;
+}
+
+static void narrowToWide(wchar_t *dst, size_t dstSize, const char *src)
+{
+    size_t i = 0;
+    for (; src[i] && i + 1 < dstSize; i++) {
+        dst[i] = static_cast<wchar_t>(static_cast<unsigned char>(src[i]));
+    }
+    dst[i] = L'\0';
+}
+
+// Blocks until the user picks one of `count` candidates (DPAD up/down to
+// move, A to confirm), rendering an OSD-styled panel each frame. Runs
+// before D_DoomMain() on the Doom task's own stack, using the same
+// FrameBuffer/BluetoothJoystick objects I_FinishUpdate()/I_StartTic() use
+// once the engine is running - both are already begin()'d by app_main() by
+// the time doomTask() starts.
+static int selectIwad(const WadCandidate *candidates, int count)
+{
+    hagl_backend_t *backend = fb.getBuffer();
+    if (!backend) {
+        return 0; // no display to choose with - just take the first one
+    }
+
+    ESP_LOGI(TAG, "%d IWADs found in %s - showing selection menu", count, g_doomDir);
+
+    const hagl_color_t backdrop     = uiColor(backend,  8,  12,  20);
+    const hagl_color_t panel        = uiColor(backend, 18,  28,  46);
+    const hagl_color_t border       = uiColor(backend, 235, 194,  77);
+    const hagl_color_t selectedBg   = uiColor(backend,  52,  92, 158);
+    const hagl_color_t normalText   = uiColor(backend, 235, 239, 244);
+    const hagl_color_t selectedText = uiColor(backend, 255, 255, 255);
+
+    static constexpr int panelX     = 16;
+    static constexpr int panelY     = 6;
+    static constexpr int panelW     = kDisplayWidth - 2 * panelX;
+    static constexpr int itemX      = panelX + 12;
+    static constexpr int itemW      = panelW - 24;
+    static constexpr int titleY     = panelY + 10;
+    static constexpr int firstItemY = panelY + 32;
+    static constexpr int itemStep   = 16;
+    const int panelH = std::min(kDisplayHeight - 2 * panelY, 32 + count * itemStep + 8);
+
+    int selection = 0;
+    uint32_t prevRaw = 0;
+
+    for (;;) {
+        const uint32_t raw = btJoystick.getButtonMask();
+        const uint32_t rawPressed = raw & ~prevRaw;
+        const uint32_t joyPressed = normalizeDpadMask(raw) & ~normalizeDpadMask(prevRaw);
+        prevRaw = raw;
+
+        if (isPressed(joyPressed, Btn::DPAD_UP))   selection = (selection - 1 + count) % count;
+        if (isPressed(joyPressed, Btn::DPAD_DOWN)) selection = (selection + 1) % count;
+        if (isPressed(rawPressed, Btn::BTN_A)) {
+            break;
+        }
+
+        hagl_fill_rectangle_xywh(backend, 0, 0, kDisplayWidth, kDisplayHeight, backdrop);
+        hagl_fill_rectangle_xywh(backend, panelX, panelY, panelW, panelH, panel);
+        hagl_fill_rectangle_xywh(backend, panelX,            panelY,            panelW, 2,      border);
+        hagl_fill_rectangle_xywh(backend, panelX,            panelY + panelH-2, panelW, 2,      border);
+        hagl_fill_rectangle_xywh(backend, panelX,             panelY,           2,      panelH, border);
+        hagl_fill_rectangle_xywh(backend, panelX + panelW-2,  panelY,           2,      panelH, border);
+
+        drawMenuText(backend, L"Select WAD", panelX + 12, titleY, border, 1);
+
+        for (int i = 0; i < count; i++) {
+            const int rowY = firstItemY + i * itemStep;
+            const bool sel = (i == selection);
+            if (sel) {
+                hagl_fill_rectangle_xywh(backend, itemX - 4, rowY - 3, itemW, 14, selectedBg);
+            }
+            wchar_t buf[64];
+            narrowToWide(buf, 64, candidates[i].label);
+            drawMenuText(backend, buf, itemX, rowY, sel ? selectedText : normalText, 1);
+        }
+
+        hagl_flush(backend);
+        vTaskDelay(pdMS_TO_TICKS(33));
+    }
+
+    ESP_LOGI(TAG, "Selected WAD: %s", candidates[selection].path);
+    return selection;
+}
+
 // PrBoom entry — runs the whole game; never returns.
 static void doomTask(void *arg)
 {
@@ -966,8 +1114,23 @@ static void doomTask(void *arg)
     }
 
     if (!iwad) {
-        // No usable selection — scan the littlefs mount for an IWAD.
-        if (findIwadInDir(EraTV::kLittleFsMountPoint, iwadBuf, sizeof(iwadBuf))) {
+        // No usable selection — scan the littlefs mount for every IWAD it
+        // holds. More than one (e.g. a compressed Doom and Doom II side by
+        // side) means there's a real choice to make, so ask instead of
+        // silently booting whatever readdir() happens to return first.
+        static WadCandidate candidates[kMaxWadCandidates];
+        int n = listIwadsInDir(EraTV::kLittleFsMountPoint, candidates, kMaxWadCandidates);
+        if (n > 1) {
+            strncpy(g_doomDir, EraTV::kLittleFsMountPoint, sizeof(g_doomDir) - 1);
+            int choice = selectIwad(candidates, n);
+            iwad = candidates[choice].path;
+        } else if (n == 1) {
+            iwad = candidates[0].path;
+            strncpy(g_doomDir, EraTV::kLittleFsMountPoint, sizeof(g_doomDir) - 1);
+        } else if (findIwadInDir(EraTV::kLittleFsMountPoint, iwadBuf, sizeof(iwadBuf))) {
+            // No genuine IWAD found (listIwadsInDir only counts those) but
+            // there might still be a lone PWAD sitting there - keep the old
+            // any-.wad fallback for that edge case.
             iwad = iwadBuf;
             strncpy(g_doomDir, EraTV::kLittleFsMountPoint, sizeof(g_doomDir) - 1);
         }

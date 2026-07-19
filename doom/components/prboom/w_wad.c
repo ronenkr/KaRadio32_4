@@ -44,6 +44,11 @@
 #include "w_wad.h"
 #include "lprintf.h"
 
+// ZWAD: see w_wad.h and ../zwad-compressed-wad-porting.md. miniz.h (the
+// vendored tinfl component) pins the platform macros the tinfl_decompressor
+// struct layout depends on - always go through it, not miniz_tinfl.h directly.
+#include "miniz.h"
+
 //
 // GLOBALS
 //
@@ -120,8 +125,10 @@ char *AddDefaultExtension(char *path, const char *ext)
 static void W_AddFile(wadfile_info_t *wadfile)
 {
   size_t startlump = numlumps;
-  filelump_t *lumpindex, *fileinfo;
+  filelump_t *lumpindex = NULL, *fileinfo;
+  zwadfilelump_t *zlumpindex = NULL, *zfileinfo;
   wadinfo_t header;
+  int compressed_wad;
 
   // If we do not have the whole thing in memory then we open it from disk
   if (!wadfile->data)
@@ -143,7 +150,13 @@ static void W_AddFile(wadfile_info_t *wadfile)
 
   W_Read(&header, sizeof(header), 0, wadfile);
 
-  if (strncmp(header.identification, "IWAD", 4) && strncmp(header.identification, "PWAD", 4))
+  // ZWAD: see w_wad.h and ../zwad-compressed-wad-porting.md.
+  compressed_wad = !strncmp(header.identification, "ZWAD", 4);
+  wadfile->is_zwad = compressed_wad;
+
+  if (!compressed_wad &&
+      strncmp(header.identification, "IWAD", 4) &&
+      strncmp(header.identification, "PWAD", 4))
   {
     // Assume it's a single lump file
     lumpindex = fileinfo = malloc(sizeof(filelump_t));
@@ -151,6 +164,19 @@ static void W_AddFile(wadfile_info_t *wadfile)
     fileinfo->filepos = 0;
     ExtractFileBase(wadfile->name, fileinfo->name);
     numlumps++;
+  }
+  else if (compressed_wad)
+  {
+    // ZWAD directory entries are 20-byte zwadfilelump_t records, not
+    // 16-byte filelump_t - reading them with the wrong stride corrupts
+    // every entry after the first.
+    size_t wadlumps = LONG(header.numlumps);
+    size_t length = wadlumps * sizeof(zwadfilelump_t);
+    if ((size_t)LONG(header.infotableofs) >= wadfile->size)
+      I_Error("W_AddFile: %s: directory offset past end of file", wadfile->name);
+    zlumpindex = malloc(length);
+    W_Read(zlumpindex, length, LONG(header.infotableofs), wadfile);
+    numlumps += wadlumps;
   }
   else
   {
@@ -164,26 +190,58 @@ static void W_AddFile(wadfile_info_t *wadfile)
 
   // Append the new lumps to lumpinfo
   lumpinfo = realloc(lumpinfo, numlumps * sizeof(lumpinfo_t));
-  fileinfo = lumpindex;
 
-  for (size_t i = startlump; i < numlumps; i++, fileinfo++)
+  if (compressed_wad)
   {
-    lumpinfo_t *lump_p = &lumpinfo[i];
-    lump_p->wadfile = wadfile;                    //  killough 4/25/98
-    lump_p->position = LONG(fileinfo->filepos);
-    lump_p->size = LONG(fileinfo->size);
-    lump_p->li_namespace = ns_global;              // killough 4/17/98
-    lump_p->locks = 0;
-    lump_p->ptr = NULL;
-    memcpy(lump_p->name, fileinfo->name, 8);
+    zfileinfo = zlumpindex;
+    for (size_t i = startlump; i < numlumps; i++, zfileinfo++)
+    {
+      lumpinfo_t *lump_p = &lumpinfo[i];
+      int position = LONG(zfileinfo->filepos);
+      int size = LONG(zfileinfo->size);
+      int csize = LONG(zfileinfo->compressed_size);
+
+      // Never trust the directory blindly: reject a stream that would run
+      // past the end of the file before it's ever handed to the inflator.
+      if (position < 0 || size < 0 || csize < 0 ||
+          (size_t)position + (size_t)csize > wadfile->size)
+        I_Error("W_AddFile: %s: lump %.8s has an invalid directory entry",
+          wadfile->name, zfileinfo->name);
+
+      lump_p->wadfile = wadfile;
+      lump_p->position = position;
+      lump_p->size = size;
+      lump_p->compressed_size = csize;
+      lump_p->li_namespace = ns_global;
+      lump_p->locks = 0;
+      lump_p->ptr = NULL;
+      memcpy(lump_p->name, zfileinfo->name, 8);
+    }
+    free(zlumpindex);
+  }
+  else
+  {
+    fileinfo = lumpindex;
+    for (size_t i = startlump; i < numlumps; i++, fileinfo++)
+    {
+      lumpinfo_t *lump_p = &lumpinfo[i];
+      lump_p->wadfile = wadfile;                    //  killough 4/25/98
+      lump_p->position = LONG(fileinfo->filepos);
+      lump_p->size = LONG(fileinfo->size);
+      lump_p->compressed_size = 0;
+      lump_p->li_namespace = ns_global;              // killough 4/17/98
+      lump_p->locks = 0;
+      lump_p->ptr = NULL;
+      memcpy(lump_p->name, fileinfo->name, 8);
+    }
+    free(lumpindex);
   }
 
-  free(lumpindex);
-
-  lprintf(LO_INFO, " added %s:%s (%d lumps)\n",
+  lprintf(LO_INFO, " added %s:%s (%d lumps%s)\n",
     wadfile->data ? "data" : "file",
     wadfile->name,
-    numlumps - startlump);
+    numlumps - startlump,
+    compressed_wad ? ", ZWAD" : "");
 }
 
 // jff 1/23/98 Create routines to reorder the master directory
@@ -423,6 +481,67 @@ int W_LumpLength(int lump)
   return lumpinfo[lump].size;
 }
 
+// ZWAD decompression state. Both are large (32 KB + ~8 KB) and only ever
+// touched from W_ReadLump(), never per-frame, so linker.lf relocates
+// w_wad.o's .bss to PSRAM to keep this off the internal-RAM budget the
+// display framebuffer needs. WAD reads happen one at a time in this engine
+// (no threading), so a single shared instance of each is safe.
+#define ZWAD_INPUT_BUFFER_SIZE 32768
+static unsigned char zwad_input_buffer[ZWAD_INPUT_BUFFER_SIZE];
+static tinfl_decompressor zwad_decomp;
+
+// Inflates lumpinfo[lump]'s zlib stream straight into the caller's
+// destination buffer (exactly l->size bytes, the same buffer an ordinary
+// lump read would fill). Compressed input is read from disk in
+// ZWAD_INPUT_BUFFER_SIZE chunks through the shared buffer above rather
+// than pulling the whole stream into memory first - see
+// ../zwad-compressed-wad-porting.md for why (random access with the least
+// persistent decompression memory).
+static void W_InflateLump(void *dest, lumpinfo_t *l)
+{
+  size_t compressed_remaining = l->compressed_size;
+  size_t file_pos = l->position;
+  mz_uint8 *out_ptr = (mz_uint8 *)dest;
+  size_t out_remaining = l->size;
+  tinfl_status status;
+
+  tinfl_init(&zwad_decomp);
+
+  do
+  {
+    size_t chunk = compressed_remaining < ZWAD_INPUT_BUFFER_SIZE ?
+      compressed_remaining : ZWAD_INPUT_BUFFER_SIZE;
+
+    if (chunk > 0 && W_Read(zwad_input_buffer, chunk, file_pos, l->wadfile) != (int)chunk)
+      I_Error("W_InflateLump: %.8s: short read (%u bytes at %u)",
+        l->name, (unsigned)chunk, (unsigned)file_pos);
+
+    size_t in_avail = chunk;
+    size_t out_avail = out_remaining;
+    mz_uint32 flags = TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
+    if (compressed_remaining > chunk)
+      flags |= TINFL_FLAG_HAS_MORE_INPUT;
+
+    status = tinfl_decompress(&zwad_decomp, zwad_input_buffer, &in_avail,
+      (mz_uint8 *)dest, out_ptr, &out_avail, flags);
+
+    // Only the file position needs to advance by what tinfl actually
+    // consumed - any unconsumed tail of this chunk is simply re-read next
+    // time round, so the input buffer carries no state between calls.
+    file_pos += in_avail;
+    compressed_remaining -= in_avail;
+    out_ptr += out_avail;
+    out_remaining -= out_avail;
+  } while (status == TINFL_STATUS_NEEDS_MORE_INPUT || status == TINFL_STATUS_HAS_MORE_OUTPUT);
+
+  if (status != TINFL_STATUS_DONE)
+    I_Error("W_InflateLump: %.8s: inflate failed (status %d)", l->name, (int)status);
+
+  if (out_remaining != 0)
+    I_Error("W_InflateLump: %.8s: expected %u uncompressed bytes, got %u",
+      l->name, (unsigned)l->size, (unsigned)(l->size - out_remaining));
+}
+
 //
 // W_ReadLump
 // Loads the lump into the given buffer,
@@ -434,10 +553,24 @@ void W_ReadLump(void *dest, int lump)
     I_Error("W_ReadLump: index out of bounds");
 
   lumpinfo_t *l = lumpinfo + lump;
-  if (l->wadfile)
-  {
+  if (!l->wadfile || l->size == 0)
+    return;
+
+  if (l->compressed_size > 0)
+    W_InflateLump(dest, l);
+  else
     W_Read(dest, l->size, l->position, l->wadfile);
-  }
+}
+
+//
+// W_CompressedBufferUsage
+//
+size_t W_CompressedBufferUsage(void)
+{
+  for (size_t i = 0; i < numwadfiles; i++)
+    if (wadfiles[i].is_zwad)
+      return ZWAD_INPUT_BUFFER_SIZE;
+  return 0;
 }
 
 //
@@ -452,8 +585,10 @@ const void *W_CacheLumpNum(int lump)
 
   if (!l->ptr)
   {
-    // Bypass caching if we have the WAD mapped in memory
-    if (l->wadfile && l->wadfile->data)
+    // Bypass caching if we have the WAD mapped in memory - but never for a
+    // compressed lump: the mapped bytes there are a zlib stream, not the
+    // raw data the renderer/sound loader/map loader expect.
+    if (l->wadfile && l->wadfile->data && l->compressed_size == 0)
       return l->wadfile->data + l->position;
     W_ReadLump(Z_Malloc(W_LumpLength(lump), PU_STATIC, &l->ptr), lump);
     l->locks = 0;

@@ -1,10 +1,14 @@
-# Relocate the OPL music synthesizer's large static buffers to PSRAM.
+# Relocate large static buffers to PSRAM.
 #
 # WaveTable (dbopl.o, 8 KB) and opl_chip (opl.o, ~4 KB) are only touched by the
 # audio task, never by Doom's per-pixel render path, so moving them to external
 # RAM costs nothing in the hot loop. Crucially it shrinks the internal-RAM .bss
 # footprint at link time, which keeps a large enough contiguous DMA block free
 # for the 284x240 RGB565 display framebuffer (allocated from internal RAM).
+#
+# w_wad.o's ZWAD decompression state (32 KB input buffer + ~8 KB
+# tinfl_decompressor) is the same story: only touched from W_ReadLump on
+# lump loads, never per-frame, so it costs nothing to push off internal RAM.
 #
 # Requires CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y (set in sdkconfig).
 
@@ -13,3 +17,4 @@ archive: libprboom.a
 entries:
     dbopl (extram_bss)
     opl (extram_bss)
+    w_wad (extram_bss)
